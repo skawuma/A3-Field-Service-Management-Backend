@@ -1,0 +1,27 @@
+version: '3.9'
+services:
+  db:
+    image: postgres:16
+    container_name: a3fsm_postgres
+    environment:
+      POSTGRES_DB: a3fsm
+      POSTGRES_USER: a3fsm_user
+      POSTGRES_PASSWORD: a3fsm_pass
+    ports:
+      - "5432:5432"
+    volumes:
+      - db_data:/var/lib/postgresql/data
+
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: a3fsm_pgadmin
+    environment:
+      PGADMIN_DEFAULT_EMAIL: admin@a3fsm.local
+      PGADMIN_DEFAULT_PASSWORD: admin123
+    ports:
+      - "5050:80"
+    depends_on:
+      - db
+
+volumes:
+  db_data:
