@@ -1,7 +1,12 @@
 package com.a3solutions.fsm.technician;
 
+import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,10 +25,21 @@ public class TechnicianService {
         this.repo = repo;
     }
 
-    public List<TechnicianDto> getAll() {
-        return repo.findAll().stream()
+    public PageResponse<TechnicianDto> getPage(int page, int size, String sortBy) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy).ascending());
+        Page<TechnicianEntity> result = repo.findAll(pageable);
+
+        List<TechnicianDto> items = result.getContent()
+                .stream()
                 .map(this::toDto)
                 .toList();
+
+        return PageResponse.of(
+                items,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements()
+        );
     }
 
     public TechnicianDto getById(Long id) {

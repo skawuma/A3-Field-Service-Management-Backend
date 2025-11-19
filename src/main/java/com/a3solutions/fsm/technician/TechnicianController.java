@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.technician;
 
+import com.a3solutions.fsm.common.PageResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -15,6 +16,7 @@ import java.util.List;
 @RestController
 @RequestMapping("/api/technicians")
 public class TechnicianController {
+
     private final TechnicianService technicianService;
 
     public TechnicianController(TechnicianService technicianService) {
@@ -23,8 +25,12 @@ public class TechnicianController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
-    public ResponseEntity<List<TechnicianDto>> getAll() {
-        return ResponseEntity.ok(technicianService.getAll());
+    public ResponseEntity<PageResponse<TechnicianDto>> getPage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "lastName") String sortBy
+    ) {
+        return ResponseEntity.ok(technicianService.getPage(page, size, sortBy));
     }
 
     @PostMapping

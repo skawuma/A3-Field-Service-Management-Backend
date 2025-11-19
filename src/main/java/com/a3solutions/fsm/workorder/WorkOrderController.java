@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.workorder;
 
+import com.a3solutions.fsm.common.PageResponse;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.*;
@@ -24,8 +25,12 @@ public class WorkOrderController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
-    public ResponseEntity<List<WorkOrderDto>> getAll() {
-        return ResponseEntity.ok(service.getAll());
+    public ResponseEntity<PageResponse<WorkOrderDto>> getPage(
+            @RequestParam(defaultValue = "0") int page,
+            @RequestParam(defaultValue = "10") int size,
+            @RequestParam(defaultValue = "createdAt") String sortBy
+    ) {
+        return ResponseEntity.ok(service.getPage(page, size, sortBy));
     }
 
     @PostMapping

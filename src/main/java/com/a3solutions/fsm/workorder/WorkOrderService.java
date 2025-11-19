@@ -1,7 +1,12 @@
 package com.a3solutions.fsm.workorder;
 
+import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import jakarta.transaction.Transactional;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 
 import java.util.List;
@@ -20,10 +25,21 @@ public class WorkOrderService {
         this.repo = repo;
     }
 
-    public List<WorkOrderDto> getAll() {
-        return repo.findAll().stream()
+    public PageResponse<WorkOrderDto> getPage(int page, int size, String sortBy) {
+        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy).descending());
+        Page<WorkOrderEntity> result = repo.findAll(pageable);
+
+        List<WorkOrderDto> items = result.getContent()
+                .stream()
                 .map(this::toDto)
                 .toList();
+
+        return PageResponse.of(
+                items,
+                result.getNumber(),
+                result.getSize(),
+                result.getTotalElements()
+        );
     }
 
     public WorkOrderDto getById(Long id) {
