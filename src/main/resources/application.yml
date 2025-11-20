@@ -26,3 +26,5 @@ springdoc:
     path: /api-docs
   swagger-ui:
     path: /swagger-ui
+storage:
+  local-root: uploads

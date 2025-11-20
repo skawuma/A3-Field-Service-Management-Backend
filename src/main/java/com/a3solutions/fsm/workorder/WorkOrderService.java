@@ -63,6 +63,20 @@ public class WorkOrderService {
     }
 
     @Transactional
+    public WorkOrderDto assignTechnician(Long id, AssignTechnicianRequest req) {
+        var wo = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("Work order not found"));
+
+        wo.setAssignedTechId(req.technicianId());
+        wo.setStatus(WorkOrderStatus.IN_PROGRESS);
+
+        repo.save(wo);
+
+        return toDto(wo);
+    }
+
+
+    @Transactional
     public WorkOrderDto update(Long id, WorkOrderCreateRequest req) {
         var existing = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Work order not found"));

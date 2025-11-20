@@ -40,4 +40,15 @@ public class WorkOrderController {
     }
 
     // GET/{id}, PUT/{id}, DELETE/{id} same pattern
+
+    @PostMapping("/{id}/assign")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
+    public ResponseEntity<WorkOrderDto> assignTechnician(
+            @PathVariable Long id,
+            @RequestBody AssignTechnicianRequest request
+    ) {
+        return ResponseEntity.ok(service.assignTechnician(id, request));
+    }
+
 }
+
