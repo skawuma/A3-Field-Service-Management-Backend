@@ -55,4 +55,14 @@ public class PageResponse <T> {
     public int getTotalPages() {
         return totalPages;
     }
+    public static <T> PageResponse<T> of(org.springframework.data.domain.Page<T> pageData) {
+        return new PageResponse<>(
+                pageData.getContent(),
+                pageData.getNumber(),
+                pageData.getSize(),
+                pageData.getTotalElements(),
+                pageData.getTotalPages()
+        );
+    }
+
 }

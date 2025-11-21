@@ -1,6 +1,7 @@
 package com.a3solutions.fsm.workorder;
 
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 
 import java.time.LocalDate;
 
@@ -10,7 +11,7 @@ import java.time.LocalDate;
  * @project A3 Field Service Management Backend
  * @date 11/17/25
  */
-public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long> {
+public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long>, JpaSpecificationExecutor<WorkOrderEntity> {
 
     long countByStatus(WorkOrderStatus status);
     long countByAssignedTechIdIsNull();

@@ -23,24 +23,42 @@ public class WorkOrderController {
         this.service = service;
     }
 
+    /**
+     * MAIN PAGINATION, FILTERING & SORTING ENDPOINT
+     */
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<PageResponse<WorkOrderDto>> getPage(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "createdAt") String sortBy
+
+            // NEW — filters
+            @RequestParam(required = false) String search,
+            @RequestParam(required = false) String priority,
+            @RequestParam(required = false) String status,
+
+            // NEW — sorting
+            @RequestParam(defaultValue = "id,desc") String sort
     ) {
-        return ResponseEntity.ok(service.getPage(page, size, sortBy));
+        return ResponseEntity.ok(
+                service.getPage(page, size, search, priority, status, sort)
+        );
     }
 
+
+    /**
+     * CREATE WORK ORDER
+     */
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
     public ResponseEntity<WorkOrderDto> create(@RequestBody WorkOrderCreateRequest req) {
         return ResponseEntity.ok(service.create(req));
     }
 
-    // GET/{id}, PUT/{id}, DELETE/{id} same pattern
 
+    /**
+     * ASSIGN TECHNICIAN
+     */
     @PostMapping("/{id}/assign")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
     public ResponseEntity<WorkOrderDto> assignTechnician(
@@ -49,6 +67,10 @@ public class WorkOrderController {
     ) {
         return ResponseEntity.ok(service.assignTechnician(id, request));
     }
+
+    // (Optional) FUTURE: GET/{id}, UPDATE/{id}, DELETE/{id}
+
+
 
 }
 

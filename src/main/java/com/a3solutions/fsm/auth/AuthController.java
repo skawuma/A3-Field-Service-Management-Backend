@@ -21,6 +21,14 @@ public class AuthController {
     public AuthController(AuthService authService) {
         this.authService = authService;
     }
+    @PostMapping("/create-admin")
+    public ResponseEntity<?> createAdmin() {
+
+
+
+        return ResponseEntity.ok(authService.createAdmin());
+    }
+
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {

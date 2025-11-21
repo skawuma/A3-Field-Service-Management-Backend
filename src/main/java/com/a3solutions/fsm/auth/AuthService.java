@@ -5,6 +5,7 @@ import com.a3solutions.fsm.security.JwtService;
 import com.a3solutions.fsm.security.Role;
 import jakarta.transaction.Transactional;
 
+import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -52,42 +53,74 @@ public class AuthService {
         userRepo.save(user);
 
         var userDetails = new UserDetailsImpl(user);
-        var accessToken = jwtService.generateToken(userDetails);
-        var refreshToken = jwtService.generateToken(userDetails); // later: different expiry
+        var accessToken = jwtService.generateAccessToken(userDetails);
+        var refreshToken = jwtService.generateRefreshToken(userDetails);// later: different expiry
 
         return new AuthResponse(accessToken, refreshToken, user.getRole().name());
     }
+
+    public ResponseEntity<String> createAdmin() {
+        var hashed = passwordEncoder.encode("admin123");
+
+        var user = UserEntity.builder()
+                .firstName("Admin")
+                .lastName("User")
+                .email("admin@a3fsm.com")
+                .password(hashed)
+                .role(Role.ADMIN)
+                .active(true)
+                .build();
+
+        userRepo.save(user);
+
+        return ResponseEntity.ok("Admin created");
+    }
+
 
     public AuthResponse login(LoginRequest request) {
-        var authToken = new UsernamePasswordAuthenticationToken(
-                request.email(), request.password());
-        authManager.authenticate(authToken);
-
+        // 1) Load user by email
         var user = userRepo.findByEmail(request.email())
-                .orElseThrow(() -> new BadRequestException("Invalid credentials"));
+                .orElseThrow(() -> new BadRequestException("Invalid email or password"));
 
+        // 2) Check password manually with PasswordEncoder
+        if (!passwordEncoder.matches(request.password(), user.getPassword())) {
+            throw new BadRequestException("Invalid email or password");
+        }
+
+        // 3) Build UserDetails + tokens
         var userDetails = new UserDetailsImpl(user);
-        var accessToken = jwtService.generateToken(userDetails);
-        var refreshToken = jwtService.generateToken(userDetails);
+        var accessToken = jwtService.generateAccessToken(userDetails);
+        var refreshToken = jwtService.generateRefreshToken(userDetails);
+
+
 
         return new AuthResponse(accessToken, refreshToken, user.getRole().name());
     }
 
+
     public AuthResponse refreshToken(RefreshTokenRequest request) {
-        // For now, trust the refresh token as a normal JWT
-        String email = jwtService.extractUsername(request.refreshToken());
+        String refresh = request.refreshToken();
+
+        // Must be a valid refresh token
+        if (!jwtService.isRefreshToken(refresh)) {
+            throw new BadRequestException("Not a refresh token");
+        }
+
+        String email = jwtService.extractUsername(refresh);
         var user = userRepo.findByEmail(email)
                 .orElseThrow(() -> new BadRequestException("User not found"));
 
         var userDetails = new UserDetailsImpl(user);
 
-        if (!jwtService.isTokenValid(request.refreshToken(), userDetails)) {
-            throw new BadRequestException("Invalid refresh token");
+        if (!jwtService.isTokenValid(refresh, userDetails)) {
+            throw new BadRequestException("Expired or invalid refresh token");
         }
 
-        var accessToken = jwtService.generateToken(userDetails);
-        var newRefreshToken = jwtService.generateToken(userDetails);
+        // Generate new tokens
+        var accessToken = jwtService.generateAccessToken(userDetails);
+        var newRefreshToken = jwtService.generateRefreshToken(userDetails);
 
         return new AuthResponse(accessToken, newRefreshToken, user.getRole().name());
     }
+
 }
