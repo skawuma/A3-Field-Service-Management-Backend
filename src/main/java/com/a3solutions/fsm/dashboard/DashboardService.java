@@ -3,6 +3,7 @@ package com.a3solutions.fsm.dashboard;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
 import com.a3solutions.fsm.workorder.WorkOrderStatus;
+import org.springframework.stereotype.Service;
 
 import java.time.LocalDate;
 
@@ -12,6 +13,7 @@ import java.time.LocalDate;
  * @project A3 Field Service Management Backend
  * @date 11/19/25
  */
+@Service
 public class DashboardService {
     private final TechnicianRepository techRepo;
     private final WorkOrderRepository woRepo;

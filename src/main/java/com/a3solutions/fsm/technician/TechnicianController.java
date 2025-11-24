@@ -28,10 +28,16 @@ public class TechnicianController {
     public ResponseEntity<PageResponse<TechnicianDto>> getPage(
             @RequestParam(defaultValue = "0") int page,
             @RequestParam(defaultValue = "10") int size,
-            @RequestParam(defaultValue = "lastName") String sortBy
+
+            // NEW — unified sorting format
+            @RequestParam(defaultValue = "lastName,asc") String sort
+
     ) {
-        return ResponseEntity.ok(technicianService.getPage(page, size, sortBy));
+        return ResponseEntity.ok(
+                technicianService.getPage(page, size, sort)
+        );
     }
+
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")

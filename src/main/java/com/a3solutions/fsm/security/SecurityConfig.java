@@ -1,6 +1,5 @@
 package com.a3solutions.fsm.security;
 
-
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.authentication.AuthenticationProvider;
@@ -18,9 +17,8 @@ import java.util.List;
 
 /**
  * @author samuelkawuma
- * @package com.a3solutions.fsm.security
  * @project A3 Field Service Management Backend
- * @date 11/17/25
+ * Updated to integrate JWT exception handling and stable API auth flows.
  */
 @Configuration
 @EnableMethodSecurity
@@ -28,22 +26,41 @@ public class SecurityConfig {
 
     private final JwtAuthFilter jwtAuthFilter;
     private final AuthenticationProvider authProvider;
+    private final JwtAuthenticationEntryPoint authenticationEntryPoint;
+    private final JwtAccessDeniedHandler accessDeniedHandler;
 
-    public SecurityConfig(JwtAuthFilter jwtAuthFilter,
-                          AuthenticationProvider authProvider) {
+    public SecurityConfig(
+            JwtAuthFilter jwtAuthFilter,
+            AuthenticationProvider authProvider,
+            JwtAuthenticationEntryPoint authenticationEntryPoint,
+            JwtAccessDeniedHandler accessDeniedHandler
+    ) {
         this.jwtAuthFilter = jwtAuthFilter;
         this.authProvider = authProvider;
+        this.authenticationEntryPoint = authenticationEntryPoint;
+        this.accessDeniedHandler = accessDeniedHandler;
     }
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+
         http
                 .csrf(csrf -> csrf.disable())
+                .cors(Customizer.withDefaults())
                 .sessionManagement(sm ->
                         sm.sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint)  // 401 handler
+                        .accessDeniedHandler(accessDeniedHandler)            // 403 handler
+                )
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/api/auth/**","http://10.0.0.98:4200/", "/swagger-ui/**",  "/api/auth/create-admin" , "/api-docs/**").permitAll()
+                        .requestMatchers(
+                                "/api/auth/**",
+                                "/api/auth/create-admin",
+                                "/swagger-ui/**",
+                                "/api-docs/**"
+                        ).permitAll()
                         .anyRequest().authenticated()
                 )
                 .authenticationProvider(authProvider)
@@ -59,7 +76,12 @@ public class SecurityConfig {
 
         CorsConfiguration config = new CorsConfiguration();
         config.setAllowCredentials(true);
-        config.setAllowedOrigins(List.of("http://localhost:4200","http://Samuels-MacBook-Pro.local:4200","http://10.0.0.98:4200/","http://Samuels-MacBook-Pro.local:4200/"));
+        config.setAllowedOrigins(List.of(
+                "http://localhost:4200",
+                "http://Samuels-MacBook-Pro.local:4200",
+                "http://10.0.0.98:4200",
+                "http://10.0.0.98:4200/"
+        ));
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
 

@@ -18,7 +18,7 @@ import java.io.IOException;
  * @author samuelkawuma
  * @package com.a3solutions.fsm.security
  * @project A3 Field Service Management Backend
- * @date 11/17/25
+ * Tailored for new JwtService with access/refresh tokens and typed JWT claims.
  */
 @Component
 public class JwtAuthFilter extends OncePerRequestFilter {
@@ -26,8 +26,10 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     private final JwtService jwtService;
     private final CustomUserDetailsService userDetailsService;
 
-    public JwtAuthFilter(JwtService jwtService,
-                         CustomUserDetailsService userDetailsService) {
+    public JwtAuthFilter(
+            JwtService jwtService,
+            CustomUserDetailsService userDetailsService
+    ) {
         this.jwtService = jwtService;
         this.userDetailsService = userDetailsService;
     }
@@ -40,32 +42,39 @@ public class JwtAuthFilter extends OncePerRequestFilter {
     ) throws ServletException, IOException {
 
         final String authHeader = request.getHeader("Authorization");
+
+        // ===== 1. No Authorization header =====
         if (authHeader == null || !authHeader.startsWith("Bearer ")) {
             filterChain.doFilter(request, response);
             return;
         }
 
-        String token = authHeader.substring(7);
+        final String token = authHeader.substring(7);
 
-        // Extract username (subject)
-        String email;
+        // ===== 2. Safely extract username =====
+        final String email;
         try {
             email = jwtService.extractUsername(token);
         } catch (Exception e) {
+            // Token invalid, malformed, or expired
             filterChain.doFilter(request, response);
-            return; // invalid or expired token
+            return;
         }
 
-        // ===== ONLY PROCESS ACCESS TOKENS =====
+        // ===== 3. Only allow ACCESS tokens for authentication =====
         if (!jwtService.isAccessToken(token)) {
             filterChain.doFilter(request, response);
             return;
         }
 
+        // ===== 4. Avoid double-authentication =====
         if (email != null && SecurityContextHolder.getContext().getAuthentication() == null) {
+
             var userDetails = userDetailsService.loadUserByUsername(email);
 
+            // Validate signature + expiration + subject match
             if (jwtService.isTokenValid(token, userDetails)) {
+
                 var authToken = new UsernamePasswordAuthenticationToken(
                         userDetails,
                         null,
@@ -80,6 +89,7 @@ public class JwtAuthFilter extends OncePerRequestFilter {
             }
         }
 
+        // ===== 5. Continue filter chain =====
         filterChain.doFilter(request, response);
     }
 }

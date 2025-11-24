@@ -17,19 +17,27 @@ import java.util.List;
  * @project A3 Field Service Management Backend
  * @date 11/17/25
  */
+
 @Service
 public class TechnicianService {
+
     private final TechnicianRepository repo;
 
     public TechnicianService(TechnicianRepository repo) {
         this.repo = repo;
     }
 
-    public PageResponse<TechnicianDto> getPage(int page, int size, String sortBy) {
-        Pageable pageable = PageRequest.of(page, size, Sort.by(sortBy).ascending());
+    // ============================================================
+    // PAGINATION (tailored to match WorkOrder logic)
+    // ============================================================
+    public PageResponse<TechnicianDto> getPage(int page, int size, String sort) {
+
+        Pageable pageable = buildPageable(page, size, sort);
+
         Page<TechnicianEntity> result = repo.findAll(pageable);
 
-        List<TechnicianDto> items = result.getContent()
+        List<TechnicianDto> items = result
+                .getContent()
                 .stream()
                 .map(this::toDto)
                 .toList();
@@ -42,6 +50,29 @@ public class TechnicianService {
         );
     }
 
+    private Pageable buildPageable(int page, int size, String sort) {
+
+        if (sort == null || sort.isBlank()) {
+            return PageRequest.of(page, size, Sort.by("lastName").ascending());
+        }
+
+        String[] parts = sort.split(",");
+        String field = parts[0].trim();
+        String direction = (parts.length > 1)
+                ? parts[1].trim().toLowerCase()
+                : "asc";
+
+        Sort sortObj = switch (direction) {
+            case "desc" -> Sort.by(field).descending();
+            default -> Sort.by(field).ascending();
+        };
+
+        return PageRequest.of(page, size, sortObj);
+    }
+
+    // ============================================================
+    // CRUD (unchanged)
+    // ============================================================
     public TechnicianDto getById(Long id) {
         var tech = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Technician not found"));
@@ -58,6 +89,7 @@ public class TechnicianService {
                 .certifications(req.certifications())
                 .status(TechnicianStatus.ACTIVE)
                 .build();
+
         return toDto(repo.save(entity));
     }
 
@@ -65,11 +97,13 @@ public class TechnicianService {
     public TechnicianDto update(Long id, TechnicianCreateRequest req) {
         var existing = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Technician not found"));
+
         existing.setFirstName(req.firstName());
         existing.setLastName(req.lastName());
         existing.setPhone(req.phone());
         existing.setEmail(req.email());
         existing.setCertifications(req.certifications());
+
         return toDto(repo.save(existing));
     }
 

@@ -2,6 +2,7 @@ package com.a3solutions.fsm.workorder;
 
 import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.exceptions.NotFoundException;
+import com.a3solutions.fsm.technician.TechnicianRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.PageRequest;
@@ -21,10 +22,17 @@ import java.util.List;
 @Service
 public class WorkOrderService {
     private final WorkOrderRepository repo;
+    private final TechnicianRepository technicianRepo;
 
-    public WorkOrderService(WorkOrderRepository repo) {
+
+    public WorkOrderService(
+            WorkOrderRepository repo,
+            TechnicianRepository technicianRepo
+    ) {
         this.repo = repo;
+        this.technicianRepo = technicianRepo;
     }
+
 
     // ============================================================
     // PAGE + SEARCH + FILTER + SORT
@@ -112,11 +120,22 @@ public class WorkOrderService {
         return toDto(repo.save(entity));
     }
 
+    // ============================================================
+    // ASSIGN TECHNICIAN (updated)
+    // ============================================================
     @Transactional
     public WorkOrderDto assignTechnician(Long id, AssignTechnicianRequest req) {
-        var wo = repo.findById(id)
-                .orElseThrow(() -> new NotFoundException("Work order not found"));
 
+        var wo = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+
+        // ✔ Validate technician exists
+        technicianRepo.findById(req.technicianId())
+                .orElseThrow(() ->
+                        new NotFoundException("Technician not found: " + req.technicianId())
+                );
+
+        // ✔ Perform assignment
         wo.setAssignedTechId(req.technicianId());
         wo.setStatus(WorkOrderStatus.IN_PROGRESS);
 

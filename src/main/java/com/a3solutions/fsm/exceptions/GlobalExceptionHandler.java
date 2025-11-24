@@ -22,34 +22,34 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
 
-    @ExceptionHandler(NotFoundException.class)
-    public ResponseEntity<Object> handleNotFound(NotFoundException ex, HttpServletRequest req) {
-        return build(HttpStatus.NOT_FOUND, ex.getMessage(), req.getRequestURI());
-    }
+//    @ExceptionHandler(NotFoundException.class)
+//    public ResponseEntity<Object> handleNotFound(NotFoundException ex, HttpServletRequest req) {
+//        return build(HttpStatus.NOT_FOUND, ex.getMessage(), req.getRequestURI());
+//    }
+//
+//    @ExceptionHandler(BadRequestException.class)
+//    public ResponseEntity<Object> handleBadRequest(BadRequestException ex, HttpServletRequest req) {
+//        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), req.getRequestURI());
+//    }
 
-    @ExceptionHandler(BadRequestException.class)
-    public ResponseEntity<Object> handleBadRequest(BadRequestException ex, HttpServletRequest req) {
-        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), req.getRequestURI());
-    }
+//    @ExceptionHandler(MethodArgumentNotValidException.class)
+//    public ResponseEntity<Object> handleValidation(MethodArgumentNotValidException ex,
+//                                                   HttpServletRequest req) {
+//        Map<String, String> errors = new HashMap<>();
+//        for (var err : ex.getBindingResult().getAllErrors()) {
+//            String field = ((FieldError) err).getField();
+//            String msg = err.getDefaultMessage();
+//            errors.put(field, msg);
+//        }
+//        Map<String, Object> body = baseBody(HttpStatus.BAD_REQUEST, req.getRequestURI());
+//        body.put("errors", errors);
+//        return ResponseEntity.badRequest().body(body);
+//    }
 
-    @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Object> handleValidation(MethodArgumentNotValidException ex,
-                                                   HttpServletRequest req) {
-        Map<String, String> errors = new HashMap<>();
-        for (var err : ex.getBindingResult().getAllErrors()) {
-            String field = ((FieldError) err).getField();
-            String msg = err.getDefaultMessage();
-            errors.put(field, msg);
-        }
-        Map<String, Object> body = baseBody(HttpStatus.BAD_REQUEST, req.getRequestURI());
-        body.put("errors", errors);
-        return ResponseEntity.badRequest().body(body);
-    }
-
-    @ExceptionHandler(Exception.class)
-    public ResponseEntity<Object> handleGeneric(Exception ex, HttpServletRequest req) {
-        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error occurred", req.getRequestURI());
-    }
+//    @ExceptionHandler(Exception.class)
+//    public ResponseEntity<Object> handleGeneric(Exception ex, HttpServletRequest req) {
+//        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error occurred", req.getRequestURI());
+//    }
 
     private ResponseEntity<Object> build(HttpStatus status, String message, String path) {
         Map<String, Object> body = baseBody(status, path);

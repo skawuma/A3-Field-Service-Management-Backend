@@ -18,12 +18,14 @@ import java.time.Instant;
 @AllArgsConstructor
 @Builder
 public class TechnicianEntity {
+
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @Column(nullable = false)
     private String firstName;
+
     @Column(nullable = false)
     private String lastName;
 
@@ -34,6 +36,20 @@ public class TechnicianEntity {
     @Enumerated(EnumType.STRING)
     private TechnicianStatus status = TechnicianStatus.ACTIVE;
 
+//    @Builder.Default
+//    @Column(nullable = false, updatable = false)
+//    private Instant createdAt = Instant.now();
+
+
+    @Builder.Default
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
+
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }
+

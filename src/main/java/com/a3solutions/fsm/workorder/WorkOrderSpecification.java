@@ -48,13 +48,22 @@ public class WorkOrderSpecification {
     // ============================================================
     public static Specification<WorkOrderEntity> hasStatus(String status) {
         return (root, query, cb) -> {
-            if (status == null || status.isBlank()) {
+
+            // Ignore missing or invalid status filters
+            if (status == null || status.isBlank() || status.equalsIgnoreCase("null")) {
                 return cb.conjunction();
             }
 
-            return cb.equal(root.get("status"), WorkOrderStatus.valueOf(status));
+            try {
+                WorkOrderStatus enumStatus = WorkOrderStatus.valueOf(status.toUpperCase().trim());
+                return cb.equal(root.get("status"), enumStatus);
+            } catch (IllegalArgumentException ex) {
+                // If a bad value is passed, do NOT crash the page
+                return cb.conjunction();
+            }
         };
     }
+
 
     // ============================================================
     // COMBINE EVERYTHING

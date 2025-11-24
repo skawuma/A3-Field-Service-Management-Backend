@@ -24,8 +24,6 @@ public class AuthController {
     @PostMapping("/create-admin")
     public ResponseEntity<?> createAdmin() {
 
-
-
         return ResponseEntity.ok(authService.createAdmin());
     }
 

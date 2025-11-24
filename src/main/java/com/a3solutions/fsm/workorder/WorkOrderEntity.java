@@ -36,6 +36,17 @@ public class WorkOrderEntity {
     private LocalDate scheduledDate;
     private String priority;
 
+//    @Column(nullable = false, updatable = false)
+//    private Instant createdAt = Instant.now();
+
+    @Builder.Default
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();
+
+    @PrePersist
+    public void prePersist() {
+        if (createdAt == null) {
+            createdAt = Instant.now();
+        }
+    }
 }
