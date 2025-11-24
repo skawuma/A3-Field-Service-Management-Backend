@@ -13,6 +13,7 @@ public record TechnicianCreateRequest (
         @NotBlank String lastName,
         String phone,
         String email,
-        String certifications
+        String certifications,
+        TechnicianStatus status   // NEW: optional for update
 
 ){ }

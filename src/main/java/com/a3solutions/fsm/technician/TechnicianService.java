@@ -104,6 +104,11 @@ public class TechnicianService {
         existing.setEmail(req.email());
         existing.setCertifications(req.certifications());
 
+        // 🔥 NEW: allow status update if provided
+        if (req.status() != null) {
+            existing.setStatus(req.status());
+        }
+
         return toDto(repo.save(existing));
     }
 

@@ -44,6 +44,22 @@ public class TechnicianController {
     public ResponseEntity<TechnicianDto> create(@RequestBody TechnicianCreateRequest request) {
         return ResponseEntity.ok(technicianService.create(request));
     }
+    // 🔥 NEW: UPDATE TECHNICIAN (ADMIN ONLY)
+    @PutMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<TechnicianDto> update(
+            @PathVariable Long id,
+            @RequestBody TechnicianCreateRequest request
+    ) {
+        return ResponseEntity.ok(technicianService.update(id, request));
+    }
 
-    // GET by id, PUT, DELETE, etc...
+    // 🔥 NEW: DELETE TECHNICIAN (ADMIN ONLY)
+    @DeleteMapping("/{id}")
+    @PreAuthorize("hasRole('ADMIN')")
+    public ResponseEntity<Void> delete(@PathVariable Long id) {
+        technicianService.delete(id);
+        return ResponseEntity.noContent().build();
+    }
+
 }
