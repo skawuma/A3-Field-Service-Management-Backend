@@ -38,6 +38,13 @@ public class TechnicianController {
         );
     }
 
+    @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
+    public ResponseEntity<TechnicianDto> getOne(@PathVariable Long id) {
+        var tech = technicianService.getById(id);
+        return ResponseEntity.ok(tech);
+    }
+
 
     @PostMapping
     @PreAuthorize("hasRole('ADMIN')")

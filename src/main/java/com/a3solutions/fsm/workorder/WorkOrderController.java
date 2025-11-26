@@ -45,8 +45,9 @@ public class WorkOrderController {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
         Role role = user.getRole();
 
+        //🔥 TECH: map userId -> technicianId
         if (role == Role.TECH) {
-            technicianId = user.getId();
+            technicianId = service.findTechnicianIdForUser(user.getId());
         }
 
         return ResponseEntity.ok(

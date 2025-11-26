@@ -35,7 +35,8 @@ public class TechnicianEntity {
 
     @Enumerated(EnumType.STRING)
     private TechnicianStatus status = TechnicianStatus.ACTIVE;
-
+    @Column(name = "user_id")
+    private Long userId;
 //    @Builder.Default
 //    @Column(nullable = false, updatable = false)
 //    private Instant createdAt = Instant.now();

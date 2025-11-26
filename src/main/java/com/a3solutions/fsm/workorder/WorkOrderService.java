@@ -3,6 +3,7 @@ package com.a3solutions.fsm.workorder;
 import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import com.a3solutions.fsm.security.Role;
+import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.*;
@@ -145,6 +146,44 @@ public class WorkOrderService {
 
         return toDto(repo.save(existing));
     }
+
+
+    // =====================================================================
+    // HELPERS FOR TECH USER
+    // =====================================================================
+
+    /** 🔥 Map logged-in userId → technicianId (or null if not mapped) */
+    public Long findTechnicianIdForUser(Long userId) {
+        return technicianRepo.findByUserId(userId)
+                .map(TechnicianEntity::getId)
+                .orElse(null);
+    }
+
+    /** 🔥 Check if a TECH user (by userId) is allowed to access this work order */
+    public boolean canTechAccessWorkOrder(Long workOrderId, Long userId) {
+        var techOpt = technicianRepo.findByUserId(userId);
+        if (techOpt.isEmpty()) {
+            return false;
+        }
+        Long technicianId = techOpt.get().getId();
+
+        return repo.findById(workOrderId)
+                .map(wo -> technicianId.equals(wo.getAssignedTechId()))
+                .orElse(false);
+    }
+
+    /** 🔥 TECH update using userId */
+    @Transactional
+    public WorkOrderDto updateTechByUser(Long id, WorkOrderCreateRequest req, Long userId) {
+        var techOpt = technicianRepo.findByUserId(userId);
+        if (techOpt.isEmpty()) {
+            throw new NotFoundException("No technician linked to this user.");
+        }
+        Long technicianId = techOpt.get().getId();
+        return updateTech(id, req, technicianId);
+    }
+
+
 
     // =====================================================================
     // HELPERS

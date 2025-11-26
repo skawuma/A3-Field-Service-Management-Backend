@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.technician;
 
+import com.a3solutions.fsm.auth.UserRepository;
 import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import jakarta.transaction.Transactional;
@@ -22,9 +23,11 @@ import java.util.List;
 public class TechnicianService {
 
     private final TechnicianRepository repo;
+    private final UserRepository userRepo;   // 🔥 NEW
 
-    public TechnicianService(TechnicianRepository repo) {
+    public TechnicianService(TechnicianRepository repo, UserRepository userRepo) {
         this.repo = repo;
+        this.userRepo = userRepo;
     }
 
     // ============================================================
@@ -81,6 +84,13 @@ public class TechnicianService {
 
     @Transactional
     public TechnicianDto create(TechnicianCreateRequest req) {
+
+        // 1) Try to find a UserEntity with the same email
+        Long linkedUserId = userRepo.findByEmail(req.email())
+                .map(u -> u.getId())   // map UserEntity → Long
+                .orElse(null);
+
+        //  2) Build technician & attach the userId
         var entity = TechnicianEntity.builder()
                 .firstName(req.firstName())
                 .lastName(req.lastName())
@@ -88,10 +98,15 @@ public class TechnicianService {
                 .email(req.email())
                 .certifications(req.certifications())
                 .status(TechnicianStatus.ACTIVE)
+                .userId(linkedUserId)          // NEW FIELD
                 .build();
 
-        return toDto(repo.save(entity));
+        var saved = repo.save(entity);
+
+        return toDto(saved);
     }
+
+
 
     @Transactional
     public TechnicianDto update(Long id, TechnicianCreateRequest req) {
@@ -111,6 +126,8 @@ public class TechnicianService {
 
         return toDto(repo.save(existing));
     }
+
+
 
     @Transactional
     public void delete(Long id) {
