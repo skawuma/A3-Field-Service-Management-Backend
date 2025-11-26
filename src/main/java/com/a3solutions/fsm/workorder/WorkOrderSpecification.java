@@ -78,4 +78,15 @@ public class WorkOrderSpecification {
                 .and(hasPriority(priority))
                 .and(hasStatus(status));
     }
+
+    // existing methods: hasSearch, hasPriority, hasStatus, etc.
+
+    public static Specification<WorkOrderEntity> assignedTo(Long technicianId) {
+        return (root, query, cb) -> {
+            if (technicianId == null) {
+                return cb.conjunction(); // no extra filter
+            }
+            return cb.equal(root.get("assignedTechId"), technicianId);
+        };
+    }
 }

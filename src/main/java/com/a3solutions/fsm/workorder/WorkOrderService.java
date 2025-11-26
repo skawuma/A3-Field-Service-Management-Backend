@@ -2,12 +2,10 @@ package com.a3solutions.fsm.workorder;
 
 import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.exceptions.NotFoundException;
+import com.a3solutions.fsm.security.Role;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import jakarta.transaction.Transactional;
-import org.springframework.data.domain.Page;
-import org.springframework.data.domain.PageRequest;
-import org.springframework.data.domain.Pageable;
-import org.springframework.data.domain.Sort;
+import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 
@@ -21,90 +19,55 @@ import java.util.List;
  */
 @Service
 public class WorkOrderService {
+
     private final WorkOrderRepository repo;
     private final TechnicianRepository technicianRepo;
 
-
-    public WorkOrderService(
-            WorkOrderRepository repo,
-            TechnicianRepository technicianRepo
-    ) {
+    public WorkOrderService(WorkOrderRepository repo, TechnicianRepository technicianRepo) {
         this.repo = repo;
         this.technicianRepo = technicianRepo;
     }
 
-
-    // ============================================================
-    // PAGE + SEARCH + FILTER + SORT
-    // ============================================================
+    // =====================================================================
+    // GET PAGE
+    // =====================================================================
     public PageResponse<WorkOrderDto> getPage(
-            int page,
-            int size,
-            String search,
-            String priority,
-            String status,
-            String sort
+            int page, int size,
+            String search, String priority,
+            String status, String sort,
+            Long technicianId
     ) {
         Pageable pageable = buildPageable(page, size, sort);
 
-        Specification<WorkOrderEntity> spec = Specification.where(
-                        WorkOrderSpecification.hasSearch(search)
-                )
+        Specification<WorkOrderEntity> spec = Specification
+                .where(WorkOrderSpecification.hasSearch(search))
                 .and(WorkOrderSpecification.hasPriority(priority))
-                .and(WorkOrderSpecification.hasStatus(status));
+                .and(WorkOrderSpecification.hasStatus(status))
+                .and(WorkOrderSpecification.assignedTo(technicianId));
 
         Page<WorkOrderEntity> results = repo.findAll(spec, pageable);
 
-        List<WorkOrderDto> items = results
-                .map(this::toDto)
-                .getContent();
-
         return PageResponse.of(
-                items,
+                results.map(this::toDto).getContent(),
                 results.getNumber(),
                 results.getSize(),
                 results.getTotalElements()
         );
     }
 
-
-
-    // ============================================================
-    // SORT PARSER: "field,direction"  (example: "clientName,asc")
-    // ============================================================
-    private Pageable buildPageable(int page, int size, String sort) {
-        // No sort → fallback
-        if (sort == null || sort.isBlank()) {
-            return PageRequest.of(page, size, Sort.by("id").descending());
-        }
-
-        // Split into "field,direction"
-        String[] parts = sort.split(",");
-        String field = parts[0].trim();
-        String direction = (parts.length > 1) ? parts[1].trim().toLowerCase() : "desc";
-
-        Sort sortObj;
-
-        switch (direction) {
-            case "asc" -> sortObj = Sort.by(field).ascending();
-            case "desc" -> sortObj = Sort.by(field).descending();
-            default -> sortObj = Sort.by(field).descending();  // fallback
-        }
-
-        return PageRequest.of(page, size, sortObj);
-    }
-
-
-    // ============================================================
-    // CRUD BELOW REMAINS THE SAME (just formatting improvements)
-    // ============================================================
-
+    // =====================================================================
+    // GET BY ID  — REQUIRED
+    // =====================================================================
     public WorkOrderDto getById(Long id) {
         var wo = repo.findById(id)
-                .orElseThrow(() -> new NotFoundException("Work order not found"));
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+
         return toDto(wo);
     }
 
+    // =====================================================================
+    // CREATE
+    // =====================================================================
     @Transactional
     public WorkOrderDto create(WorkOrderCreateRequest req) {
         var entity = WorkOrderEntity.builder()
@@ -114,38 +77,38 @@ public class WorkOrderService {
                 .assignedTechId(req.assignedTechId())
                 .scheduledDate(req.scheduledDate())
                 .priority(req.priority())
-                .status(WorkOrderStatus.OPEN)
+                .status(req.status() != null ? req.status() : WorkOrderStatus.OPEN)
                 .build();
 
         return toDto(repo.save(entity));
     }
 
-    // ============================================================
-    // ASSIGN TECHNICIAN (updated)
-    // ============================================================
+    // =====================================================================
+    // ASSIGN TECHNICIAN
+    // =====================================================================
     @Transactional
     public WorkOrderDto assignTechnician(Long id, AssignTechnicianRequest req) {
 
         var wo = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
 
-        // ✔ Validate technician exists
         technicianRepo.findById(req.technicianId())
-                .orElseThrow(() ->
-                        new NotFoundException("Technician not found: " + req.technicianId())
-                );
+                .orElseThrow(() -> new NotFoundException("Technician not found: " + req.technicianId()));
 
-        // ✔ Perform assignment
         wo.setAssignedTechId(req.technicianId());
         wo.setStatus(WorkOrderStatus.IN_PROGRESS);
 
         return toDto(repo.save(wo));
     }
 
+    // =====================================================================
+    // ADMIN + DISPATCH FULL UPDATE
+    // =====================================================================
     @Transactional
-    public WorkOrderDto update(Long id, WorkOrderCreateRequest req) {
+    public WorkOrderDto updateAdmin(Long id, WorkOrderCreateRequest req) {
+
         var existing = repo.findById(id)
-                .orElseThrow(() -> new NotFoundException("Work order not found"));
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
 
         existing.setClientName(req.clientName());
         existing.setAddress(req.address());
@@ -153,21 +116,61 @@ public class WorkOrderService {
         existing.setAssignedTechId(req.assignedTechId());
         existing.setScheduledDate(req.scheduledDate());
         existing.setPriority(req.priority());
+        existing.setStatus(req.status());
 
         return toDto(repo.save(existing));
     }
 
+    // =====================================================================
+    // TECH LIMITED UPDATE
+    // =====================================================================
     @Transactional
-    public void delete(Long id) {
-        if (!repo.existsById(id)) {
-            throw new NotFoundException("Work order not found");
+    public WorkOrderDto updateTech(Long id, WorkOrderCreateRequest req, Long techId) {
+
+        var existing = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+
+        if (!techId.equals(existing.getAssignedTechId())) {
+            throw new NotFoundException("TECH is not assigned to this work order.");
         }
-        repo.deleteById(id);
+
+        // TECH may update only limited fields
+        existing.setDescription(req.description());
+
+        // TECH can only move IN_PROGRESS → COMPLETED
+        if (req.status() == WorkOrderStatus.COMPLETED &&
+                existing.getStatus() == WorkOrderStatus.IN_PROGRESS) {
+            existing.setStatus(WorkOrderStatus.COMPLETED);
+        }
+
+        return toDto(repo.save(existing));
     }
 
-    // ============================================================
-    // DTO MAPPER
-    // ============================================================
+    // =====================================================================
+    // HELPERS
+    // =====================================================================
+
+    public boolean isAssignedToTech(Long workOrderId, Long techId) {
+        return repo.findById(workOrderId)
+                .map(wo -> techId.equals(wo.getAssignedTechId()))
+                .orElse(false);
+    }
+
+    private Pageable buildPageable(int page, int size, String sort) {
+        if (sort == null || sort.isBlank()) {
+            return PageRequest.of(page, size, Sort.by("id").descending());
+        }
+        String[] parts = sort.split(",");
+        String field = parts[0];
+        String dir = parts.length > 1 ? parts[1] : "desc";
+        return PageRequest.of(
+                page, size,
+                "asc".equalsIgnoreCase(dir)
+                        ? Sort.by(field).ascending()
+                        : Sort.by(field).descending()
+        );
+    }
+
     private WorkOrderDto toDto(WorkOrderEntity e) {
         return new WorkOrderDto(
                 e.getId(),
@@ -180,6 +183,4 @@ public class WorkOrderService {
                 e.getPriority()
         );
     }
-
-
 }

@@ -16,6 +16,7 @@ public record WorkOrderCreateRequest(
         String description,
         Long assignedTechId,
         LocalDate scheduledDate,
-        String priority
+        String priority,
+        WorkOrderStatus status
 ) {
 }

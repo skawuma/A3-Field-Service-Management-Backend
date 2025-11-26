@@ -30,6 +30,16 @@ public class UserDetailsImpl implements UserDetails {
         this.active = user.isActive();
     }
 
+    // 🔥 ADD THIS: expose role for controllers / filters
+    public Role getRole() {
+        return role;
+    }
+
+    // Optional but recommended — many controllers rely on this directly
+    public Long getId() {
+        return id;
+    }
+
     @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority("ROLE_" + role.name()));
@@ -56,8 +66,4 @@ public class UserDetailsImpl implements UserDetails {
 
     @Override
     public boolean isEnabled() { return active; }
-
-    public Long getId() {
-        return id;
-    }
 }

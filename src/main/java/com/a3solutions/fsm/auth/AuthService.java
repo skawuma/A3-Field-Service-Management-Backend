@@ -53,8 +53,8 @@ public class AuthService {
         userRepo.save(user);
 
         var userDetails = new UserDetailsImpl(user);
-        var accessToken = jwtService.generateAccessToken(userDetails);
-        var refreshToken = jwtService.generateRefreshToken(userDetails);// later: different expiry
+        var accessToken = jwtService.generateAccessToken(user);
+        var refreshToken = jwtService.generateRefreshToken(user);// later: different expiry
 
         return new AuthResponse(accessToken, refreshToken, user.getRole().name());
     }
@@ -89,8 +89,8 @@ public class AuthService {
 
         // 3) Build UserDetails + tokens
         var userDetails = new UserDetailsImpl(user);
-        var accessToken = jwtService.generateAccessToken(userDetails);
-        var refreshToken = jwtService.generateRefreshToken(userDetails);
+        var accessToken = jwtService.generateAccessToken(user);
+        var refreshToken = jwtService.generateRefreshToken(user);
 
 
 
@@ -117,8 +117,8 @@ public class AuthService {
         }
 
         // Generate new tokens
-        var accessToken = jwtService.generateAccessToken(userDetails);
-        var newRefreshToken = jwtService.generateRefreshToken(userDetails);
+        var accessToken = jwtService.generateAccessToken(user);
+        var newRefreshToken = jwtService.generateRefreshToken(user);
 
         return new AuthResponse(accessToken, newRefreshToken, user.getRole().name());
     }
