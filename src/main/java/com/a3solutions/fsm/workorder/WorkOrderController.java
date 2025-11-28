@@ -2,10 +2,13 @@ package com.a3solutions.fsm.workorder;
 
 import com.a3solutions.fsm.auth.UserDetailsImpl;
 import com.a3solutions.fsm.common.PageResponse;
+import com.a3solutions.fsm.security.JwtService;
 import com.a3solutions.fsm.security.Role;
+import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.web.bind.annotation.*;
 
 
@@ -21,9 +24,10 @@ import org.springframework.web.bind.annotation.*;
 public class WorkOrderController {
 
     private final WorkOrderService service;
-
-    public WorkOrderController(WorkOrderService service) {
+   private final JwtService jwtService;
+    public WorkOrderController(WorkOrderService service, JwtService jwtService) {
         this.service = service;
+        this.jwtService = jwtService;
     }
 
     // =====================================================================
@@ -94,10 +98,26 @@ public class WorkOrderController {
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
     public ResponseEntity<WorkOrderDto> assignTechnician(
             @PathVariable Long id,
-            @RequestBody AssignTechnicianRequest request
+            @RequestBody AssignTechnicianRequest request,
+            HttpServletRequest httpReq
     ) {
-        return ResponseEntity.ok(service.assignTechnician(id, request));
+        // Extract username/email from JWT
+        String authHeader = httpReq.getHeader("Authorization");
+        String token = authHeader != null && authHeader.startsWith("Bearer ")
+                ? authHeader.substring(7)
+                : null;
+
+//        String actor = jwtService.extractUsername(token);
+
+        // User's email from Security Context
+        String actor = SecurityContextHolder
+                .getContext()
+                .getAuthentication()
+                .getName();
+
+        return ResponseEntity.ok(service.assignTechnician(id, request, actor));
     }
+
 
     // =====================================================================
     // UPDATE WORK ORDER — TECH LIMITED

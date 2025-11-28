@@ -23,10 +23,12 @@ public class WorkOrderService {
 
     private final WorkOrderRepository repo;
     private final TechnicianRepository technicianRepo;
+    private final WorkOrderEventService eventService;
 
-    public WorkOrderService(WorkOrderRepository repo, TechnicianRepository technicianRepo) {
+    public WorkOrderService(WorkOrderRepository repo, TechnicianRepository technicianRepo, WorkOrderEventService eventService) {
         this.repo = repo;
         this.technicianRepo = technicianRepo;
+        this.eventService = eventService;
     }
 
     // =====================================================================
@@ -88,19 +90,54 @@ public class WorkOrderService {
     // ASSIGN TECHNICIAN
     // =====================================================================
     @Transactional
-    public WorkOrderDto assignTechnician(Long id, AssignTechnicianRequest req) {
+    public WorkOrderDto assignTechnician(Long id, AssignTechnicianRequest req, String actor) {
 
+        // 1. Fetch work order
         var wo = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
 
-        technicianRepo.findById(req.technicianId())
+        // 2. Validate technician exists
+        var tech = technicianRepo.findById(req.technicianId())
                 .orElseThrow(() -> new NotFoundException("Technician not found: " + req.technicianId()));
 
+        // Store old values (for event log)
+        Long oldTechId = wo.getAssignedTechId();
+        WorkOrderStatus oldStatus = wo.getStatus();
+
+        // 3. Update work order
         wo.setAssignedTechId(req.technicianId());
         wo.setStatus(WorkOrderStatus.IN_PROGRESS);
 
-        return toDto(repo.save(wo));
+        var saved = repo.save(wo);
+
+        // 4. Record assignment event
+        String technicianName = tech.getFullName()!= null ? tech.getFullName() : ("Tech#" + tech.getId());
+
+        eventService.recordEvent(
+                saved,
+                WorkOrderEventType.ASSIGNED_TECHNICIAN,
+                "Technician " + technicianName + " was assigned to this work order.",
+                oldTechId == null ? null : oldTechId.toString(),
+                tech.getId().toString(),
+                actor
+        );
+
+        // 5. If status changed → record event
+        if (oldStatus != WorkOrderStatus.IN_PROGRESS) {
+            eventService.recordEvent(
+                    saved,
+                    WorkOrderEventType.STATUS_CHANGED,
+                    "Status changed to IN_PROGRESS.",
+                    oldStatus.name(),
+                    WorkOrderStatus.IN_PROGRESS.name(),
+                    actor
+            );
+        }
+
+        // 6. Return updated DTO
+        return toDto(saved);
     }
+
 
     // =====================================================================
     // ADMIN + DISPATCH FULL UPDATE
