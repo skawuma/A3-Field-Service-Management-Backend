@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.workorder;
 
+import java.time.Instant;
 import java.time.LocalDate;
 
 /**
@@ -16,5 +17,9 @@ public record WorkOrderDto(
         WorkOrderStatus status,
         Long assignedTechId,
         LocalDate scheduledDate,
-        String priority
-) { }
+        String priority,
+        String signatureUrl,
+        String completionNotes,
+        Instant completedAt
+) {
+}

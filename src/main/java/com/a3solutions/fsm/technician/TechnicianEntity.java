@@ -52,5 +52,13 @@ public class TechnicianEntity {
             createdAt = Instant.now();
         }
     }
+
+    // NEW: full name helper
+    public String getFullName() {
+        if (firstName == null && lastName == null) return "";
+        if (firstName == null) return lastName;
+        if (lastName == null) return firstName;
+        return (firstName + " " + lastName).trim();
+    }
 }
 

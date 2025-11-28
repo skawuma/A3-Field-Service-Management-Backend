@@ -1,0 +1,66 @@
+@workorder_id = 5
+
+### ADMIN LOGIN
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "admin@a3fsm.com",
+  "password": "admin123"
+}
+
+> {%
+    client.global.set("admin_token", response.body.accessToken);
+    client.global.set("refresh", response.body.refreshToken);
+    client.global.set("role", response.body.role);
+%}
+
+###
+
+### ASSIGN TECHNICIAN
+POST http://localhost:8080/api/workorders/{{workorder_id}}/assign
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "technicianId": 1
+}
+
+###
+
+### TECH LOGIN
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "debs@a3fsm.com",
+  "password": "debs123"
+}
+
+> {%
+    client.global.set("tech_token", response.body.accessToken);
+    client.global.set("refresh", response.body.refreshToken);
+    client.global.set("role", response.body.role);
+%}
+
+###
+
+### SUBMIT STRUCTURED COMPLETION REPORT
+POST http://localhost:8080/api/workorders/{{workorder_id}}/completion-report
+Content-Type: application/json
+Authorization: Bearer {{tech_token}}
+
+{
+  "faTag": "FA147003",
+  "issueResolved": true,
+  "replacementNeeded": "PROBABLE",
+  "returnVisitRequired": false,
+  "summaryOfWork": "Replaced faulty scanner and verified successful operation."
+}
+
+###
+
+### GET STRUCTURED COMPLETION REPORT
+GET http://localhost:8080/api/workorders/{{workorder_id}}/completion-report
+Authorization: Bearer {{tech_token}}
+Accept: application/json

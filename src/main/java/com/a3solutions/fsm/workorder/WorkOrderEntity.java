@@ -38,7 +38,14 @@ public class WorkOrderEntity {
 
 //    @Column(nullable = false, updatable = false)
 //    private Instant createdAt = Instant.now();
+@Column(name = "signature_url", length = 1000)
+private String signatureUrl;
 
+    @Column(name = "completion_notes", length = 2000)
+    private String completionNotes;
+
+    @Column(name = "completed_at")
+    private Instant completedAt;
     @Builder.Default
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();

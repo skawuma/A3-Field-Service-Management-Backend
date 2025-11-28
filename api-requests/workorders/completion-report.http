@@ -1,0 +1,19 @@
+### Submit structured completion report
+POST http://localhost:8080/api/workorders/2/completion-report
+Content-Type: application/json
+Authorization: Bearer {{admin_token}}
+
+{
+  "faTag": "FA147003",
+  "issueResolved": true,
+  "replacementNeeded": "PROBABLE",
+  "returnVisitRequired": false,
+  "summaryOfWork": "Replaced faulty scanner and verified successful operation."
+}
+
+###
+
+### Get structured completion report
+GET http://localhost:8080/api/workorders/2/completion-report
+Authorization: Bearer {{admin_token}}
+Accept: application/json

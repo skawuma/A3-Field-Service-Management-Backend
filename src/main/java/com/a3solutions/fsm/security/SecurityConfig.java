@@ -2,6 +2,7 @@ package com.a3solutions.fsm.security;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpMethod;
 import org.springframework.security.authentication.AuthenticationProvider;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -55,12 +56,14 @@ public class SecurityConfig {
                         .accessDeniedHandler(accessDeniedHandler)            // 403 handler
                 )
                 .authorizeHttpRequests(auth -> auth
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
                         .requestMatchers(
                                 "/api/auth/**",
                                 "/api/auth/create-admin",
                                 "/swagger-ui/**",
                                 "/api-docs/**"
                         ).permitAll()
+
                         .anyRequest().authenticated()
                 )
                         .authenticationProvider(authProvider)
@@ -78,9 +81,10 @@ public class SecurityConfig {
         config.setAllowCredentials(true);
         config.setAllowedOrigins(List.of(
                 "http://localhost:4200",
+                "http://127.0.0.1:4200",
+                "http://samuels-macbook-pro.local:4200",
                 "http://Samuels-MacBook-Pro.local:4200",
-                "http://10.0.0.98:4200",
-                "http://10.0.0.98:4200/"
+                "http://10.0.0.98:4200"
         ));
         config.addAllowedHeader("*");
         config.addAllowedMethod("*");
@@ -88,4 +92,5 @@ public class SecurityConfig {
         source.registerCorsConfiguration("/**", config);
         return new CorsFilter(source);
     }
+
 }

@@ -1,0 +1,13 @@
+POST http://localhost:8080/api/auth/login
+Content-Type: application/json
+
+{
+  "email": "debs@a3fsm.com",
+  "password": "debs123"
+}
+
+> {%
+    client.global.set("tech_token", response.body.accessToken);
+    client.global.set("refresh", response.body.refreshToken);
+    client.global.set("role", response.body.role);
+%}

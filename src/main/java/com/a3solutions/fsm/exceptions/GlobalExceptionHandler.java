@@ -7,6 +7,8 @@ import org.springframework.validation.FieldError;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.multipart.MaxUploadSizeExceededException;
+import org.springframework.web.multipart.MultipartException;
 
 import java.time.Instant;
 import java.util.HashMap;
@@ -22,34 +24,55 @@ import java.util.Map;
 public class GlobalExceptionHandler {
 
 
-//    @ExceptionHandler(NotFoundException.class)
-//    public ResponseEntity<Object> handleNotFound(NotFoundException ex, HttpServletRequest req) {
-//        return build(HttpStatus.NOT_FOUND, ex.getMessage(), req.getRequestURI());
-//    }
-//
-//    @ExceptionHandler(BadRequestException.class)
-//    public ResponseEntity<Object> handleBadRequest(BadRequestException ex, HttpServletRequest req) {
-//        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), req.getRequestURI());
-//    }
+    @ExceptionHandler(MaxUploadSizeExceededException.class)
+    public ResponseEntity<?> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+        return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
+                .body(Map.of(
+                        "status", 413,
+                        "error", "PAYLOAD_TOO_LARGE",
+                        "message", "Uploaded file exceeds the maximum allowed size."
+                ));
+    }
 
-//    @ExceptionHandler(MethodArgumentNotValidException.class)
-//    public ResponseEntity<Object> handleValidation(MethodArgumentNotValidException ex,
-//                                                   HttpServletRequest req) {
-//        Map<String, String> errors = new HashMap<>();
-//        for (var err : ex.getBindingResult().getAllErrors()) {
-//            String field = ((FieldError) err).getField();
-//            String msg = err.getDefaultMessage();
-//            errors.put(field, msg);
-//        }
-//        Map<String, Object> body = baseBody(HttpStatus.BAD_REQUEST, req.getRequestURI());
-//        body.put("errors", errors);
-//        return ResponseEntity.badRequest().body(body);
-//    }
+    @ExceptionHandler(MultipartException.class)
+    public ResponseEntity<?> handleMultipartException(MultipartException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(Map.of(
+                        "status", 400,
+                        "error", "MULTIPART_ERROR",
+                        "message", "Upload failed or was interrupted."
+                ));
+    }
 
-//    @ExceptionHandler(Exception.class)
-//    public ResponseEntity<Object> handleGeneric(Exception ex, HttpServletRequest req) {
-//        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error occurred", req.getRequestURI());
-//    }
+
+    @ExceptionHandler(NotFoundException.class)
+    public ResponseEntity<Object> handleNotFound(NotFoundException ex, HttpServletRequest req) {
+        return build(HttpStatus.NOT_FOUND, ex.getMessage(), req.getRequestURI());
+    }
+
+    @ExceptionHandler(BadRequestException.class)
+    public ResponseEntity<Object> handleBadRequest(BadRequestException ex, HttpServletRequest req) {
+        return build(HttpStatus.BAD_REQUEST, ex.getMessage(), req.getRequestURI());
+    }
+
+    @ExceptionHandler(MethodArgumentNotValidException.class)
+    public ResponseEntity<Object> handleValidation(MethodArgumentNotValidException ex,
+                                                   HttpServletRequest req) {
+        Map<String, String> errors = new HashMap<>();
+        for (var err : ex.getBindingResult().getAllErrors()) {
+            String field = ((FieldError) err).getField();
+            String msg = err.getDefaultMessage();
+            errors.put(field, msg);
+        }
+        Map<String, Object> body = baseBody(HttpStatus.BAD_REQUEST, req.getRequestURI());
+        body.put("errors", errors);
+        return ResponseEntity.badRequest().body(body);
+    }
+
+    @ExceptionHandler(Exception.class)
+    public ResponseEntity<Object> handleGeneric(Exception ex, HttpServletRequest req) {
+        return build(HttpStatus.INTERNAL_SERVER_ERROR, "Unexpected error occurred", req.getRequestURI());
+    }
 
     private ResponseEntity<Object> build(HttpStatus status, String message, String path) {
         Map<String, Object> body = baseBody(status, path);
@@ -66,5 +89,11 @@ public class GlobalExceptionHandler {
         return body;
     }
 
+
+    @ExceptionHandler(IllegalStateException.class)
+    public ResponseEntity<?> handleIllegalState(IllegalStateException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(Map.of("error", ex.getMessage()));
+    }
 
 }
