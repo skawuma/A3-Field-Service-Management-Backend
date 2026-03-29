@@ -4,6 +4,7 @@ import com.a3solutions.fsm.auth.UserDetailsImpl;
 import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.security.JwtService;
 import com.a3solutions.fsm.security.Role;
+import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRequest;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -62,25 +63,48 @@ public class WorkOrderController {
     // =====================================================================
     // GET ONE — TECH ONLY IF ASSIGNED
     // =====================================================================
+//    @GetMapping("/{id}")
+//    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
+//    public ResponseEntity<?> getOne(
+//            @PathVariable Long id,
+//            Authentication auth
+//    ) {
+//        var dto = service.getById(id);
+//
+//        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+//        Role role = user.getRole();
+//
+//        if (role == Role.TECH) {
+//            if (dto.assignedTechId() == null || !dto.assignedTechId().equals(user.getId())) {
+//                return ResponseEntity.status(403).body("Not authorized to view this work order.");
+//            }
+//        }
+//
+//        return ResponseEntity.ok(dto);
+//    }
+
+
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<?> getOne(
             @PathVariable Long id,
             Authentication auth
     ) {
-        var dto = service.getById(id);
-
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
         Role role = user.getRole();
 
         if (role == Role.TECH) {
-            if (dto.assignedTechId() == null || !dto.assignedTechId().equals(user.getId())) {
-                return ResponseEntity.status(403).body("Not authorized to view this work order.");
+            boolean allowed = service.canTechAccessWorkOrder(id, user.getId());
+            if (!allowed) {
+                return ResponseEntity.status(403)
+                        .body("Not authorized to view this work order.");
             }
         }
 
+        var dto = service.getById(id);
         return ResponseEntity.ok(dto);
     }
+
 
     // =====================================================================
     // CREATE
@@ -143,4 +167,78 @@ public class WorkOrderController {
 
         return ResponseEntity.ok(service.updateAdmin(id, req));
     }
+
+    @PostMapping("/{id}/complete")
+    @PreAuthorize("hasRole('TECH')")
+    public ResponseEntity<?> completeWorkOrder(
+            @PathVariable Long id,
+            @RequestBody CompleteWorkOrderRequest req,
+            Authentication auth
+    ) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+
+        if (!service.canTechAccessWorkOrder(id, user.getId())) {
+            return ResponseEntity.status(403)
+                    .body("TECH can only complete assigned work orders.");
+        }
+
+        return ResponseEntity.ok(
+                service.completeWorkOrder(id, req, user.getId())
+        );
+    }
+
+    @PostMapping("/{id}/completion-report")
+    @PreAuthorize("hasRole('TECH')")
+    public ResponseEntity<?> submitCompletionReport(
+            @PathVariable Long id,
+            @RequestBody WorkOrderCompletionRequest request,
+            Authentication auth
+    ) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+
+        if (!service.canTechAccessWorkOrder(id, user.getId())) {
+            return ResponseEntity.status(403)
+                    .body("TECH can only submit reports for assigned work orders.");
+        }
+
+        return ResponseEntity.ok(
+                service.submitStructuredCompletionReport(id, request, user.getId())
+        );
+    }
+
+    @GetMapping("/{id}/completion-report")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
+    public ResponseEntity<?> getCompletionReport(
+            @PathVariable Long id,
+            Authentication auth
+    ) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+        Role role = user.getRole();
+
+        if (role == Role.TECH && !service.canTechAccessWorkOrder(id, user.getId())) {
+            return ResponseEntity.status(403)
+                    .body("TECH can only view reports for assigned work orders.");
+        }
+
+        return ResponseEntity.ok(
+                service.getCompletionByWorkOrderId(id)
+        );
+    }
+
+    @GetMapping("/{id}/signature")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
+    public ResponseEntity<?> getSignature(
+            @PathVariable Long id,
+            Authentication auth
+    ) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+        Role role = user.getRole();
+
+        if (role == Role.TECH && !service.canTechAccessWorkOrder(id, user.getId())) {
+            return ResponseEntity.status(403).body("TECH can only view signature for assigned work orders.");
+        }
+
+        return service.getSignature(id);
+    }
+
 }

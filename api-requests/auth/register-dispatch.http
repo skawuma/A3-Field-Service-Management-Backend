@@ -1,0 +1,10 @@
+POST http://localhost:8080/api/auth/register
+Content-Type: application/json
+
+{
+  "firstName": "Dispatch",
+  "lastName": "User",
+  "email": "dispatch@a3fsm.com",
+  "password": "dispatch123",
+  "role": "DISPATCH"
+}

@@ -1,6 +1,9 @@
 package com.a3solutions.fsm.workorder;
 
 
+import com.a3solutions.fsm.auth.UserDetailsImpl;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -57,5 +60,45 @@ public class WorkOrderEventService {
         dto.setNewValue(e.getNewValue());
         dto.setActor(e.getActor());
         return dto;
+    }
+
+    @Transactional
+    public void logCompleted(
+            WorkOrderEntity wo,
+            String notes
+    ) {
+        recordEvent(
+                wo,
+                WorkOrderEventType.COMPLETED,
+                notes == null || notes.isBlank()
+                        ? "Work order completed and signed off."
+                        : "Work order completed and signed off. Notes: " + notes,
+                null,
+                null,
+                getActor()
+        );
+    }
+
+    /**
+     * Implemented audit logging using Spring Security context to dynamically resolve
+     * the authenticated user at the service layer,
+     * ensuring decoupling from controllers and future compatibility with microservices.
+     * @return
+     */
+    private String getActor() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+
+        if (auth == null || !auth.isAuthenticated()) {
+            return "SYSTEM";
+        }
+
+        Object principal = auth.getPrincipal();
+
+        // If you're using your custom UserDetails
+        if (principal instanceof UserDetailsImpl user) {
+            return user.getUsername(); // or user.getEmail()
+        }
+
+        return principal.toString();
     }
 }

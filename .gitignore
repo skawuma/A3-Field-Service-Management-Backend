@@ -38,3 +38,11 @@ build/
 
 ### VS Code ###
 .vscode/
+.DS_Store
+**/.DS_Store
+uploads/
+api-requests/http-client.env.json
+.DS_Store
+**/.DS_Store
+uploads/
+api-requests/http-client.env.json
