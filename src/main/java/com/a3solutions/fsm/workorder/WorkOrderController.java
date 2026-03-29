@@ -235,7 +235,7 @@ public class WorkOrderController {
         Role role = user.getRole();
 
         if (role == Role.TECH && !service.canTechAccessWorkOrder(id, user.getId())) {
-            return ResponseEntity.status(403).body("TECH can only view signature for assigned work orders.");
+            return ResponseEntity.status(403).body("TECH can only view signature for assigned work orders!!");
         }
 
         return service.getSignature(id);
