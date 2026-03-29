@@ -299,6 +299,8 @@ public class WorkOrderService {
                 e.getCompletedAt()
         );
     }
+
+
     @Transactional
     public WorkOrderDto completeWorkOrder(Long id, CompleteWorkOrderRequest req, Long userId) {
 
@@ -313,8 +315,9 @@ public class WorkOrderService {
             throw new NotFoundException("TECH not allowed to complete this work order.");
         }
 
-        if (wo.getStatus() != WorkOrderStatus.IN_PROGRESS) {
-            throw new RuntimeException("Only IN_PROGRESS work orders can be completed.");
+        if (wo.getStatus() != WorkOrderStatus.IN_PROGRESS &&
+                wo.getStatus() != WorkOrderStatus.COMPLETED) {
+            throw new RuntimeException("Only IN_PROGRESS or COMPLETED work orders can be signed off.");
         }
 
         if (req.signatureDataUrl() == null || req.signatureDataUrl().isBlank()) {
