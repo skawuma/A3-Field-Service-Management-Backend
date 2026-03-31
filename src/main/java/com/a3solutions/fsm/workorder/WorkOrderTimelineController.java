@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.workorder;
 
+import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -24,6 +25,7 @@ public class WorkOrderTimelineController {
     }
 
     @GetMapping("/{id}/events")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
     public List<WorkOrderEventDto> getTimeline(@PathVariable("id") Long workOrderId) {
         return eventService.getTimeline(workOrderId)
                 .stream()
