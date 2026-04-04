@@ -28,6 +28,8 @@ import org.springframework.http.ResponseEntity;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 /**
  * @author samuelkawuma
  * @package com.a3solutions.fsm.workorder
@@ -130,7 +132,11 @@ public class WorkOrderService {
 
         // 3. Update work order
         wo.setAssignedTechId(req.technicianId());
-        wo.setStatus(WorkOrderStatus.IN_PROGRESS);
+        WorkOrderStatus nextStatus = oldStatus;
+        if (oldStatus == null || oldStatus == WorkOrderStatus.OPEN || oldStatus == WorkOrderStatus.ASSIGNED) {
+            nextStatus = WorkOrderStatus.ASSIGNED;
+            wo.setStatus(nextStatus);
+        }
 
         var saved = repo.save(wo);
 
@@ -147,13 +153,13 @@ public class WorkOrderService {
         );
 
         // 5. If status changed → record event
-        if (oldStatus != WorkOrderStatus.IN_PROGRESS) {
+        if (oldStatus != nextStatus) {
             eventService.recordEvent(
                     saved,
                     WorkOrderEventType.STATUS_CHANGED,
-                    "Status changed to IN_PROGRESS.",
-                    oldStatus.name(),
-                    WorkOrderStatus.IN_PROGRESS.name(),
+                    "Status changed to " + nextStatus.name() + ".",
+                    oldStatus == null ? null : oldStatus.name(),
+                    nextStatus.name(),
                     actor
             );
         }
@@ -338,6 +344,103 @@ public class WorkOrderService {
         return toDto(saved);
     }
 
+    @Transactional
+    public WorkOrderDto startWorkOrder(Long id, Long userId) {
+        Long technicianId = technicianRepo.findByUserId(userId)
+                .map(TechnicianEntity::getId)
+                .orElseThrow(() -> new NotFoundException("Technician profile not found for this user."));
+
+        WorkOrderEntity wo = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+
+        if (!Objects.equals(wo.getAssignedTechId(), technicianId)) {
+            throw new NotFoundException("TECH not allowed to start this work order.");
+        }
+
+        if (wo.getStatus() == WorkOrderStatus.IN_PROGRESS) {
+            return toDto(wo);
+        }
+
+        if (wo.getStatus() == WorkOrderStatus.COMPLETED) {
+            throw new BusinessRuleException("Completed work orders cannot be started.");
+        }
+
+        if (wo.getStatus() == WorkOrderStatus.CANCELLED) {
+            throw new BusinessRuleException("Cancelled work orders cannot be started.");
+        }
+
+        if (wo.getStatus() != WorkOrderStatus.OPEN && wo.getStatus() != WorkOrderStatus.ASSIGNED) {
+            throw new BusinessRuleException("Only OPEN or ASSIGNED work orders can be started.");
+        }
+
+        WorkOrderStatus previousStatus = wo.getStatus();
+        wo.setStatus(WorkOrderStatus.IN_PROGRESS);
+
+        WorkOrderEntity saved = repo.save(wo);
+        eventService.logStarted(saved, previousStatus);
+
+        return toDto(saved);
+    }
+
+    @Transactional
+    public WorkOrderDto returnWorkOrderToOpen(Long id, Long userId) {
+        TechnicianEntity technician = technicianRepo.findByUserId(userId)
+                .orElseThrow(() -> new NotFoundException("Technician profile not found for this user."));
+
+        WorkOrderEntity wo = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+
+        if (!Objects.equals(wo.getAssignedTechId(), technician.getId())) {
+            throw new NotFoundException("TECH not allowed to release this work order.");
+        }
+
+        if (wo.getStatus() == WorkOrderStatus.IN_PROGRESS) {
+            throw new BusinessRuleException("Started work orders cannot be returned to OPEN from this screen.");
+        }
+
+        if (wo.getStatus() == WorkOrderStatus.COMPLETED) {
+            throw new BusinessRuleException("Completed work orders cannot be returned to OPEN.");
+        }
+
+        if (wo.getStatus() == WorkOrderStatus.CANCELLED) {
+            throw new BusinessRuleException("Cancelled work orders are already closed.");
+        }
+
+        WorkOrderStatus previousStatus = wo.getStatus();
+        Long previousTechId = wo.getAssignedTechId();
+
+        wo.setAssignedTechId(null);
+        wo.setStatus(WorkOrderStatus.OPEN);
+
+        WorkOrderEntity saved = repo.save(wo);
+        String actor = getCurrentActor();
+        String technicianName = technician.getFullName() != null && !technician.getFullName().isBlank()
+                ? technician.getFullName()
+                : ("Tech#" + technician.getId());
+
+        eventService.recordEvent(
+                saved,
+                WorkOrderEventType.UNASSIGNED_TECHNICIAN,
+                "Technician " + technicianName + " released this work order so it can be reassigned.",
+                previousTechId == null ? null : previousTechId.toString(),
+                null,
+                actor
+        );
+
+        if (previousStatus != WorkOrderStatus.OPEN) {
+            eventService.recordEvent(
+                    saved,
+                    WorkOrderEventType.STATUS_CHANGED,
+                    "Status changed to OPEN.",
+                    previousStatus == null ? null : previousStatus.name(),
+                    WorkOrderStatus.OPEN.name(),
+                    actor
+            );
+        }
+
+        return toDto(saved);
+    }
+
     private String saveSignatureFromDataUrl(String dataUrl, Long workOrderId, Long technicianId) {
         try {
             if (!dataUrl.startsWith("data:image/")) {
@@ -421,7 +524,7 @@ public class WorkOrderService {
         }
 
         if (workOrder.getStatus() != WorkOrderStatus.IN_PROGRESS) {
-            throw new RuntimeException("Only IN_PROGRESS work orders can be completed");
+            throw new BusinessRuleException("Only IN_PROGRESS work orders can be completed");
         }
 
         WorkOrderCompletionEntity completion = new WorkOrderCompletionEntity();
@@ -473,6 +576,14 @@ public class WorkOrderService {
                 .orElseThrow(() -> new RuntimeException("No completion report found for work order id: " + workOrderId));
 
         return mapToCompletionResponse(completion);
+    }
+
+    private String getCurrentActor() {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            return "SYSTEM";
+        }
+        return auth.getName();
     }
 
 }

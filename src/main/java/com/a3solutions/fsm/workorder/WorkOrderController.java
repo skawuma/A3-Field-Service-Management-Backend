@@ -158,14 +158,46 @@ public class WorkOrderController {
 
         if (role == Role.TECH) {
 
-            if (!service.isAssignedToTech(id, user.getId())) {
+            if (!service.canTechAccessWorkOrder(id, user.getId())) {
                 return ResponseEntity.status(403).body("TECH can only update assigned work orders.");
             }
 
-            return ResponseEntity.ok(service.updateTech(id, req, user.getId()));
+            return ResponseEntity.ok(service.updateTechByUser(id, req, user.getId()));
         }
 
         return ResponseEntity.ok(service.updateAdmin(id, req));
+    }
+
+    @PostMapping("/{id}/start")
+    @PreAuthorize("hasRole('TECH')")
+    public ResponseEntity<?> startWorkOrder(
+            @PathVariable Long id,
+            Authentication auth
+    ) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+
+        if (!service.canTechAccessWorkOrder(id, user.getId())) {
+            return ResponseEntity.status(403)
+                    .body("TECH can only start assigned work orders.");
+        }
+
+        return ResponseEntity.ok(service.startWorkOrder(id, user.getId()));
+    }
+
+    @PostMapping("/{id}/return-to-open")
+    @PreAuthorize("hasRole('TECH')")
+    public ResponseEntity<?> returnWorkOrderToOpen(
+            @PathVariable Long id,
+            Authentication auth
+    ) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+
+        if (!service.canTechAccessWorkOrder(id, user.getId())) {
+            return ResponseEntity.status(403)
+                    .body("TECH can only release assigned work orders.");
+        }
+
+        return ResponseEntity.ok(service.returnWorkOrderToOpen(id, user.getId()));
     }
 
     @PostMapping("/{id}/complete")

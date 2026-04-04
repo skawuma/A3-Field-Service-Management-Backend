@@ -8,6 +8,7 @@ package com.a3solutions.fsm.workorder;
  */
 public enum WorkOrderStatus {
     OPEN,
+    ASSIGNED,
     IN_PROGRESS,
     COMPLETED,
     CANCELLED

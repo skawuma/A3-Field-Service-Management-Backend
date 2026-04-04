@@ -79,6 +79,18 @@ public class WorkOrderEventService {
         );
     }
 
+    @Transactional
+    public void logStarted(WorkOrderEntity wo, WorkOrderStatus previousStatus) {
+        recordEvent(
+                wo,
+                WorkOrderEventType.STATUS_CHANGED,
+                "Technician started work. Status changed to IN_PROGRESS.",
+                previousStatus == null ? null : previousStatus.name(),
+                WorkOrderStatus.IN_PROGRESS.name(),
+                getActor()
+        );
+    }
+
     /**
      * Implemented audit logging using Spring Security context to dynamically resolve
      * the authenticated user at the service layer,
