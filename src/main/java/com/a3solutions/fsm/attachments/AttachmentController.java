@@ -1,12 +1,21 @@
 package com.a3solutions.fsm.attachments;
 
+import com.a3solutions.fsm.auth.UserDetailsImpl;
+import com.a3solutions.fsm.exceptions.BusinessRuleException;
+import com.a3solutions.fsm.exceptions.NotFoundException;
+import com.a3solutions.fsm.security.Role;
 import com.a3solutions.fsm.storage.StorageService;
+import com.a3solutions.fsm.workorder.WorkOrderEntity;
+import com.a3solutions.fsm.workorder.WorkOrderRepository;
+import com.a3solutions.fsm.workorder.WorkOrderService;
+import com.a3solutions.fsm.workorder.WorkOrderStatus;
 import jakarta.transaction.Transactional;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
+import org.springframework.security.core.Authentication;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -26,11 +35,17 @@ public class AttachmentController {
 
     private final StorageService storageService;
     private final AttachmentRepository attachmentRepo;
+    private final WorkOrderRepository workOrderRepo;
+    private final WorkOrderService workOrderService;
 
     public AttachmentController(StorageService storageService,
-                                AttachmentRepository attachmentRepo) {
+                                AttachmentRepository attachmentRepo,
+                                WorkOrderRepository workOrderRepo,
+                                WorkOrderService workOrderService) {
         this.storageService = storageService;
         this.attachmentRepo = attachmentRepo;
+        this.workOrderRepo = workOrderRepo;
+        this.workOrderService = workOrderService;
     }
 
     @PostMapping
@@ -38,8 +53,21 @@ public class AttachmentController {
     @Transactional
     public ResponseEntity<?> upload(
             @PathVariable Long workOrderId,
-            @RequestParam("file") MultipartFile file
+            @RequestParam("file") MultipartFile file,
+            Authentication auth
     ) {
+        if (isUnauthorizedTech(auth, workOrderId)) {
+            return ResponseEntity.status(403).body("TECH can only access attachments for assigned work orders.");
+        }
+
+        WorkOrderEntity workOrder = workOrderRepo.findById(workOrderId)
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + workOrderId));
+
+        if (workOrder.getStatus() == WorkOrderStatus.COMPLETED ||
+                workOrder.getStatus() == WorkOrderStatus.CANCELLED) {
+            throw new BusinessRuleException("Closed work orders cannot accept new attachments.");
+        }
+
         String url = storageService.store(file);
 
         var entity = AttachmentEntity.builder()
@@ -61,7 +89,11 @@ public class AttachmentController {
 
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
-    public ResponseEntity<?> list(@PathVariable Long workOrderId) {
+    public ResponseEntity<?> list(@PathVariable Long workOrderId, Authentication auth) {
+        if (isUnauthorizedTech(auth, workOrderId)) {
+            return ResponseEntity.status(403).body("TECH can only access attachments for assigned work orders.");
+        }
+
         return ResponseEntity.ok(
                 attachmentRepo.findByWorkOrderId(workOrderId)
                         .stream()
@@ -79,8 +111,13 @@ public class AttachmentController {
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<Resource> download(
             @PathVariable Long workOrderId,
-            @PathVariable Long attachmentId
+            @PathVariable Long attachmentId,
+            Authentication auth
     ) {
+        if (isUnauthorizedTech(auth, workOrderId)) {
+            return ResponseEntity.status(403).build();
+        }
+
         var attachment = attachmentRepo.findById(attachmentId)
                 .orElseThrow(() -> new RuntimeException("Attachment not found: " + attachmentId));
 
@@ -101,6 +138,14 @@ public class AttachmentController {
                 .header(HttpHeaders.CONTENT_DISPOSITION,
                         "attachment; filename=\"" + attachment.getFilename() + "\"")
                 .body(resource);
+    }
+
+    private boolean isUnauthorizedTech(Authentication auth, Long workOrderId) {
+        if (auth == null || !(auth.getPrincipal() instanceof UserDetailsImpl user)) {
+            return false;
+        }
+
+        return user.getRole() == Role.TECH && !workOrderService.canTechAccessWorkOrder(workOrderId, user.getId());
     }
 
     @DeleteMapping("/{attachmentId}")

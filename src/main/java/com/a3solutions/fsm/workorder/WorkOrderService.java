@@ -206,14 +206,17 @@ public class WorkOrderService {
             throw new NotFoundException("TECH is not assigned to this work order.");
         }
 
+        if (existing.getStatus() == WorkOrderStatus.COMPLETED ||
+                existing.getStatus() == WorkOrderStatus.CANCELLED) {
+            throw new BusinessRuleException("Closed work orders cannot be updated by technicians.");
+        }
+
+        if (req.status() != null && req.status() != existing.getStatus()) {
+            throw new BusinessRuleException("Technicians cannot change work order status from the notes update endpoint.");
+        }
+
         // TECH may update only limited fields
         existing.setDescription(req.description());
-
-        // TECH can only move IN_PROGRESS → COMPLETED
-        if (req.status() == WorkOrderStatus.COMPLETED &&
-                existing.getStatus() == WorkOrderStatus.IN_PROGRESS) {
-            existing.setStatus(WorkOrderStatus.COMPLETED);
-        }
 
         return toDto(repo.save(existing));
     }
@@ -230,18 +233,7 @@ public class WorkOrderService {
                 .orElse(null);
     }
 
-    /** 🔥 Check if a TECH user (by userId) is allowed to access this work order */
-//    public boolean canTechAccessWorkOrder(Long workOrderId, Long userId) {
-//        var techOpt = technicianRepo.findByUserId(userId);
-//        if (techOpt.isEmpty()) {
-//            return false;
-//        }
-//        Long technicianId = techOpt.get().getId();
-//
-//        return repo.findById(workOrderId)
-//                .map(wo -> technicianId.equals(wo.getAssignedTechId()))
-//                .orElse(false);
-//    }
+
 
     public boolean canTechAccessWorkOrder(Long workOrderId, Long userId) {
         var techOpt = technicianRepo.findByUserId(userId);
@@ -325,13 +317,16 @@ public class WorkOrderService {
             throw new NotFoundException("TECH not allowed to complete this work order.");
         }
 
-        if (wo.getStatus() != WorkOrderStatus.IN_PROGRESS &&
-                wo.getStatus() != WorkOrderStatus.COMPLETED) {
-            throw new RuntimeException("Only IN_PROGRESS or COMPLETED work orders can be signed off.");
+        if (wo.getStatus() != WorkOrderStatus.IN_PROGRESS) {
+            throw new BusinessRuleException("Only IN_PROGRESS work orders can be signed off.");
+        }
+
+        if (!workOrderCompletionRepository.existsByWorkOrderId(id)) {
+            throw new BusinessRuleException("Structured completion report is required before sign-off.");
         }
 
         if (req.signatureDataUrl() == null || req.signatureDataUrl().isBlank()) {
-            throw new RuntimeException("Signature is required.");
+            throw new BusinessRuleException("Signature is required.");
         }
 
         String signatureUrl = saveSignatureFromDataUrl(req.signatureDataUrl(), wo.getId(), technicianId);
@@ -387,7 +382,7 @@ public class WorkOrderService {
     }
 
     @Transactional
-    public WorkOrderDto returnWorkOrderToOpen(Long id, Long userId) {
+    public WorkOrderDto returnWorkOrderToOpen(Long id, Long userId, String reason) {
         TechnicianEntity technician = technicianRepo.findByUserId(userId)
                 .orElseThrow(() -> new NotFoundException("Technician profile not found for this user."));
 
@@ -425,7 +420,9 @@ public class WorkOrderService {
         eventService.recordEvent(
                 saved,
                 WorkOrderEventType.UNASSIGNED_TECHNICIAN,
-                "Technician " + technicianName + " released this work order so it can be reassigned.",
+                reason == null || reason.isBlank()
+                        ? "Technician " + technicianName + " released this work order so it can be reassigned."
+                        : "Technician " + technicianName + " released this work order so it can be reassigned. Reason: " + reason,
                 previousTechId == null ? null : previousTechId.toString(),
                 null,
                 actor
@@ -444,6 +441,65 @@ public class WorkOrderService {
 
         return toDto(saved);
     }
+
+//    @Transactional
+//    public WorkOrderDto returnWorkOrderToOpen(Long id, Long userId) {
+//        TechnicianEntity technician = technicianRepo.findByUserId(userId)
+//                .orElseThrow(() -> new NotFoundException("Technician profile not found for this user."));
+//
+//        WorkOrderEntity wo = repo.findById(id)
+//                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+//
+//        if (!Objects.equals(wo.getAssignedTechId(), technician.getId())) {
+//            throw new NotFoundException("TECH not allowed to release this work order.");
+//        }
+//
+//        if (wo.getStatus() == WorkOrderStatus.IN_PROGRESS) {
+//            throw new BusinessRuleException("Started work orders cannot be returned to OPEN from this screen.");
+//        }
+//
+//        if (wo.getStatus() == WorkOrderStatus.COMPLETED) {
+//            throw new BusinessRuleException("Completed work orders cannot be returned to OPEN.");
+//        }
+//
+//        if (wo.getStatus() == WorkOrderStatus.CANCELLED) {
+//            throw new BusinessRuleException("Cancelled work orders are already closed.");
+//        }
+//
+//        WorkOrderStatus previousStatus = wo.getStatus();
+//        Long previousTechId = wo.getAssignedTechId();
+//
+//        wo.setAssignedTechId(null);
+//        wo.setStatus(WorkOrderStatus.OPEN);
+//
+//        WorkOrderEntity saved = repo.save(wo);
+//        String actor = getCurrentActor();
+//        String technicianName = technician.getFullName() != null && !technician.getFullName().isBlank()
+//                ? technician.getFullName()
+//                : ("Tech#" + technician.getId());
+//
+//        eventService.recordEvent(
+//                saved,
+//                WorkOrderEventType.UNASSIGNED_TECHNICIAN,
+//                "Technician " + technicianName + " released this work order so it can be reassigned.",
+//                previousTechId == null ? null : previousTechId.toString(),
+//                null,
+//                actor
+//        );
+//
+//        if (previousStatus != WorkOrderStatus.OPEN) {
+//            eventService.recordEvent(
+//                    saved,
+//                    WorkOrderEventType.STATUS_CHANGED,
+//                    "Status changed to OPEN.",
+//                    previousStatus == null ? null : previousStatus.name(),
+//                    WorkOrderStatus.OPEN.name(),
+//                    actor
+//            );
+//        }
+//
+//        return toDto(saved);
+//    }
 
     private String saveSignatureFromDataUrl(String dataUrl, Long workOrderId, Long technicianId) {
         try {
@@ -516,11 +572,11 @@ public class WorkOrderService {
                 .orElseThrow(() -> new NotFoundException("Work order not found with id: " + workOrderId));
 
         if (workOrder.getAssignedTechId() == null) {
-            throw new RuntimeException("Work order is not assigned to any technician");
+            throw new BusinessRuleException("Work order is not assigned to any technician");
         }
 
         if (!java.util.Objects.equals(workOrder.getAssignedTechId(), technicianId)) {
-            throw new RuntimeException("You are not authorized to complete this work order");
+            throw new BusinessRuleException("You are not authorized to complete this work order");
         }
 
         if (workOrderCompletionRepository.existsByWorkOrderId(workOrderId)) {
@@ -542,20 +598,6 @@ public class WorkOrderService {
         completion.setCompletedByUserId(authenticatedUserId);
 
         WorkOrderCompletionEntity savedCompletion = workOrderCompletionRepository.save(completion);
-
-        workOrder.setStatus(WorkOrderStatus.COMPLETED);
-        workOrder.setCompletedAt(Instant.now());
-        workOrder.setCompletionNotes(request.getSummaryOfWork());
-        repo.save(workOrder);
-
-        eventService.logCompleted(
-                workOrder,
-                "FA Tag: " + request.getFaTag()
-                        + " | Issue Resolved: " + request.getIssueResolved()
-                        + " | Replacement Needed: " + request.getReplacementNeeded()
-                        + " | Return Visit Required: " + request.getReturnVisitRequired()
-                        + " | Summary: " + request.getSummaryOfWork()
-        );
 
         return mapToCompletionResponse(savedCompletion);
     }
@@ -592,6 +634,7 @@ public class WorkOrderService {
 
     @Transactional
     public WorkOrderDto reopenWorkOrder(Long id, String reason) {
+
         WorkOrderEntity wo = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
 
@@ -600,7 +643,7 @@ public class WorkOrderService {
         }
 
         String previousSignatureUrl = wo.getSignatureUrl();
-
+        Long previousTechId = wo.getAssignedTechId();
         wo.setStatus(WorkOrderStatus.OPEN);
         wo.setCompletedAt(null);
         wo.setCompletionNotes(null);
@@ -619,6 +662,16 @@ public class WorkOrderService {
             } catch (RuntimeException ex) {
                 log.warn("Failed to delete reopened work order signature file {}", previousSignatureUrl, ex);
             }
+        }
+        if (previousTechId != null) {
+            eventService.recordEvent(
+                    saved,
+                    WorkOrderEventType.UNASSIGNED_TECHNICIAN,
+                    "Work order was reopened and unassigned from technician.",
+                    previousTechId.toString(),
+                    null,
+                    actor
+            );
         }
 
         eventService.logReopened(saved, reason);

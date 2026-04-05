@@ -1,29 +1,29 @@
 package com.a3solutions.fsm.workorder;
 
+import com.a3solutions.fsm.exceptions.BusinessRuleException;
 import com.a3solutions.fsm.storage.StorageService;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionEntity;
+import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRequest;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRepository;
+import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionResponse;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
-import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
-import org.mockito.Mock;
+import org.mockito.*;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.time.Instant;
 import java.util.Optional;
 
-import static org.junit.jupiter.api.Assertions.assertEquals;
-import static org.junit.jupiter.api.Assertions.assertSame;
+import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import org.mockito.MockedStatic;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -154,20 +154,21 @@ class WorkOrderServiceTest {
         when(workOrderRepository.findById(13L)).thenReturn(Optional.of(workOrder));
         when(workOrderRepository.save(workOrder)).thenReturn(workOrder);
 
-        Authentication authentication = org.mockito.Mockito.mock(Authentication.class);
+        Authentication authentication = Mockito.mock(Authentication.class);
         when(authentication.getName()).thenReturn("debs@a3fsm.com");
-        SecurityContext securityContext = org.mockito.Mockito.mock(SecurityContext.class);
+
+        SecurityContext securityContext = Mockito.mock(SecurityContext.class);
         when(securityContext.getAuthentication()).thenReturn(authentication);
 
         try (MockedStatic<SecurityContextHolder> securityContextHolder = mockStatic(SecurityContextHolder.class)) {
             securityContextHolder.when(SecurityContextHolder::getContext).thenReturn(securityContext);
 
-            WorkOrderDto result = workOrderService.returnWorkOrderToOpen(13L, 41L);
+            WorkOrderDto result = workOrderService.returnWorkOrderToOpen(13L, 41L, null);
 
             assertEquals(WorkOrderStatus.OPEN, workOrder.getStatus());
-            assertEquals(null, workOrder.getAssignedTechId());
+            assertNull(workOrder.getAssignedTechId());
             assertEquals(WorkOrderStatus.OPEN, result.status());
-            assertEquals(null, result.assignedTechId());
+            assertNull(result.assignedTechId());
         }
 
         verify(workOrderEventService).recordEvent(
@@ -240,5 +241,249 @@ class WorkOrderServiceTest {
                 eq("OPEN"),
                 eq("admin@a3fsm.com")
         );
+    }
+
+    @Test
+    void updateTechRejectsClosedWorkOrders() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(15L)
+                .clientName("Echo")
+                .address("100 Lake")
+                .description("Original notes")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.COMPLETED)
+                .build();
+
+        when(workOrderRepository.findById(15L)).thenReturn(Optional.of(workOrder));
+
+        WorkOrderCreateRequest request = new WorkOrderCreateRequest(
+                "Echo",
+                "100 Lake",
+                "Updated notes",
+                7L,
+                null,
+                "HIGH",
+                WorkOrderStatus.COMPLETED
+        );
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.updateTech(15L, request, 7L)
+        );
+
+        assertEquals("Closed work orders cannot be updated by technicians.", ex.getMessage());
+        verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void updateTechRejectsStatusChangesFromNotesEndpoint() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(16L)
+                .clientName("Foxtrot")
+                .address("200 River")
+                .description("Original notes")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        when(workOrderRepository.findById(16L)).thenReturn(Optional.of(workOrder));
+
+        WorkOrderCreateRequest request = new WorkOrderCreateRequest(
+                "Foxtrot",
+                "200 River",
+                "Updated notes",
+                7L,
+                null,
+                "MEDIUM",
+                WorkOrderStatus.COMPLETED
+        );
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.updateTech(16L, request, 7L)
+        );
+
+        assertEquals("Technicians cannot change work order status from the notes update endpoint.", ex.getMessage());
+        verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void completeWorkOrderRejectsNonInProgressWorkOrders() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(17L)
+                .clientName("Golf")
+                .address("300 Elm")
+                .description("Replace keypad")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.COMPLETED)
+                .build();
+
+        TechnicianEntity technician = TechnicianEntity.builder()
+                .id(7L)
+                .userId(41L)
+                .build();
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(17L)).thenReturn(Optional.of(workOrder));
+
+        CompleteWorkOrderRequest request = new CompleteWorkOrderRequest(
+                "data:image/png;base64,AAAA",
+                "Signed off"
+        );
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.completeWorkOrder(17L, request, 41L)
+        );
+
+        assertEquals("Only IN_PROGRESS work orders can be signed off.", ex.getMessage());
+        verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void completeWorkOrderRequiresStructuredCompletionReport() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(18L)
+                .clientName("Hotel")
+                .address("400 Pine")
+                .description("Repair reader")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        TechnicianEntity technician = TechnicianEntity.builder()
+                .id(7L)
+                .userId(41L)
+                .build();
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(18L)).thenReturn(Optional.of(workOrder));
+        when(workOrderCompletionRepository.existsByWorkOrderId(18L)).thenReturn(false);
+
+        CompleteWorkOrderRequest request = new CompleteWorkOrderRequest(
+                "data:image/png;base64,AAAA",
+                "Signed off"
+        );
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.completeWorkOrder(18L, request, 41L)
+        );
+
+        assertEquals("Structured completion report is required before sign-off.", ex.getMessage());
+        verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void completeWorkOrderRequiresSignature() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(19L)
+                .clientName("India")
+                .address("500 Ash")
+                .description("Install printer")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        TechnicianEntity technician = TechnicianEntity.builder()
+                .id(7L)
+                .userId(41L)
+                .build();
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(19L)).thenReturn(Optional.of(workOrder));
+        when(workOrderCompletionRepository.existsByWorkOrderId(19L)).thenReturn(true);
+
+        CompleteWorkOrderRequest request = new CompleteWorkOrderRequest(
+                "",
+                "Signed off"
+        );
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.completeWorkOrder(19L, request, 41L)
+        );
+
+        assertEquals("Signature is required.", ex.getMessage());
+        verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void submitStructuredCompletionReportRejectsDuplicateSubmission() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(20L)
+                .clientName("Juliet")
+                .address("600 Maple")
+                .description("Repair kiosk")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        TechnicianEntity technician = TechnicianEntity.builder()
+                .id(7L)
+                .userId(41L)
+                .build();
+
+        WorkOrderCompletionRequest request = new WorkOrderCompletionRequest();
+        request.setFaTag("FA-20");
+        request.setIssueResolved(true);
+        request.setReplacementNeeded(com.a3solutions.fsm.workordercompletion.ReplacementNeeded.NO);
+        request.setReturnVisitRequired(false);
+        request.setSummaryOfWork("Completed");
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(20L)).thenReturn(Optional.of(workOrder));
+        when(workOrderCompletionRepository.existsByWorkOrderId(20L)).thenReturn(true);
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.submitStructuredCompletionReport(20L, request, 41L)
+        );
+
+        assertEquals("Work order has already been completed", ex.getMessage());
+        verify(workOrderCompletionRepository, never()).save(any());
+    }
+
+    @Test
+    void submitStructuredCompletionReportKeepsWorkOrderInProgressUntilSignOff() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(21L)
+                .clientName("Kilo")
+                .address("700 Birch")
+                .description("Replace UPS")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        TechnicianEntity technician = TechnicianEntity.builder()
+                .id(7L)
+                .userId(41L)
+                .build();
+
+        WorkOrderCompletionRequest request = new WorkOrderCompletionRequest();
+        request.setFaTag("FA-21");
+        request.setIssueResolved(true);
+        request.setReplacementNeeded(com.a3solutions.fsm.workordercompletion.ReplacementNeeded.NO);
+        request.setReturnVisitRequired(false);
+        request.setSummaryOfWork("Replaced UPS battery");
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(21L)).thenReturn(Optional.of(workOrder));
+        when(workOrderCompletionRepository.existsByWorkOrderId(21L)).thenReturn(false);
+        when(workOrderCompletionRepository.save(any(WorkOrderCompletionEntity.class)))
+                .thenAnswer(invocation -> {
+                    WorkOrderCompletionEntity entity = invocation.getArgument(0);
+                    entity.setWorkOrder(workOrder);
+                    return entity;
+                });
+
+        WorkOrderCompletionResponse response = workOrderService.submitStructuredCompletionReport(21L, request, 41L);
+
+        assertEquals(21L, response.getWorkOrderId());
+        assertEquals(WorkOrderStatus.IN_PROGRESS, workOrder.getStatus());
+        assertNull(workOrder.getCompletedAt());
+        assertNull(workOrder.getCompletionNotes());
+        verify(workOrderRepository, never()).save(any());
+        verify(workOrderEventService, never()).logCompleted(any(), any());
     }
 }
