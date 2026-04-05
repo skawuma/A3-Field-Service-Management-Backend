@@ -188,6 +188,7 @@ public class WorkOrderController {
     @PreAuthorize("hasRole('TECH')")
     public ResponseEntity<?> returnWorkOrderToOpen(
             @PathVariable Long id,
+            @RequestBody(required = false) ReturnToOpenRequest request,
             Authentication auth
     ) {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
@@ -197,7 +198,8 @@ public class WorkOrderController {
                     .body("TECH can only release assigned work orders.");
         }
 
-        return ResponseEntity.ok(service.returnWorkOrderToOpen(id, user.getId()));
+        String reason = request != null ? request.reason() : null;
+        return ResponseEntity.ok(service.returnWorkOrderToOpen(id, user.getId(), reason));
     }
 
     @PostMapping("/{id}/complete")
