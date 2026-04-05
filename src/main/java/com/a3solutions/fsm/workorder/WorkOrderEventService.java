@@ -37,10 +37,10 @@ public class WorkOrderEventService {
         WorkOrderEventEntity event = new WorkOrderEventEntity();
         event.setWorkOrder(workOrder);
         event.setEventType(type);
-        event.setMessage(message);
-        event.setOldValue(oldValue);
-        event.setNewValue(newValue);
-        event.setActor(actor);
+        event.setMessage(truncate(message, 500));
+        event.setOldValue(truncate(oldValue, 255));
+        event.setNewValue(truncate(newValue, 255));
+        event.setActor(truncate(actor, 150));
         return repository.save(event);
     }
 
@@ -80,14 +80,37 @@ public class WorkOrderEventService {
     }
 
     @Transactional
+    public void logCreated(WorkOrderEntity wo, String actor) {
+        recordEvent(
+                wo,
+                WorkOrderEventType.CREATED,
+                "Work order was created.",
+                null,
+                wo.getStatus() == null ? null : wo.getStatus().name(),
+                actor
+        );
+    }
+
+    @Transactional
     public void logStarted(WorkOrderEntity wo, WorkOrderStatus previousStatus) {
+        String actor = getActor();
+
+        recordEvent(
+                wo,
+                WorkOrderEventType.STARTED,
+                "Technician started work.",
+                null,
+                WorkOrderStatus.IN_PROGRESS.name(),
+                actor
+        );
+
         recordEvent(
                 wo,
                 WorkOrderEventType.STATUS_CHANGED,
-                "Technician started work. Status changed to IN_PROGRESS.",
+                "Status changed to IN_PROGRESS.",
                 previousStatus == null ? null : previousStatus.name(),
                 WorkOrderStatus.IN_PROGRESS.name(),
-                getActor()
+                actor
         );
     }
 
@@ -126,5 +149,38 @@ public class WorkOrderEventService {
                 null,
                 getActor()
         );
+    }
+
+    @Transactional
+    public void logNoteAdded(WorkOrderEntity wo, String message, String actor) {
+        recordEvent(
+                wo,
+                WorkOrderEventType.NOTE_ADDED,
+                message,
+                null,
+                null,
+                actor
+        );
+    }
+
+    @Transactional
+    public void logAttachmentAdded(WorkOrderEntity wo, String filename, String actor) {
+        recordEvent(
+                wo,
+                WorkOrderEventType.ATTACHMENT_ADDED,
+                filename == null || filename.isBlank()
+                        ? "Attachment added to work order."
+                        : "Attachment added: " + filename,
+                null,
+                filename,
+                actor
+        );
+    }
+
+    private String truncate(String value, int maxLength) {
+        if (value == null) {
+            return null;
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength);
     }
 }

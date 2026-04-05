@@ -6,6 +6,7 @@ import com.a3solutions.fsm.exceptions.NotFoundException;
 import com.a3solutions.fsm.security.Role;
 import com.a3solutions.fsm.storage.StorageService;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
+import com.a3solutions.fsm.workorder.WorkOrderEventService;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
 import com.a3solutions.fsm.workorder.WorkOrderService;
 import com.a3solutions.fsm.workorder.WorkOrderStatus;
@@ -37,15 +38,18 @@ public class AttachmentController {
     private final AttachmentRepository attachmentRepo;
     private final WorkOrderRepository workOrderRepo;
     private final WorkOrderService workOrderService;
+    private final WorkOrderEventService workOrderEventService;
 
     public AttachmentController(StorageService storageService,
                                 AttachmentRepository attachmentRepo,
                                 WorkOrderRepository workOrderRepo,
-                                WorkOrderService workOrderService) {
+                                WorkOrderService workOrderService,
+                                WorkOrderEventService workOrderEventService) {
         this.storageService = storageService;
         this.attachmentRepo = attachmentRepo;
         this.workOrderRepo = workOrderRepo;
         this.workOrderService = workOrderService;
+        this.workOrderEventService = workOrderEventService;
     }
 
     @PostMapping
@@ -68,6 +72,7 @@ public class AttachmentController {
             throw new BusinessRuleException("Closed work orders cannot accept new attachments.");
         }
 
+        String actor = resolveActor(auth);
         String url = storageService.store(file);
 
         var entity = AttachmentEntity.builder()
@@ -75,9 +80,11 @@ public class AttachmentController {
                 .filename(file.getOriginalFilename())
                 .url(url)
                 .sizeBytes(file.getSize())
+                .uploadedBy(actor)
                 .build();
 
         attachmentRepo.save(entity);
+        workOrderEventService.logAttachmentAdded(workOrder, entity.getFilename(), actor);
 
         return ResponseEntity.ok(Map.of(
                 "id", entity.getId(),
@@ -146,6 +153,13 @@ public class AttachmentController {
         }
 
         return user.getRole() == Role.TECH && !workOrderService.canTechAccessWorkOrder(workOrderId, user.getId());
+    }
+
+    private String resolveActor(Authentication auth) {
+        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+            return "SYSTEM";
+        }
+        return auth.getName();
     }
 
     @DeleteMapping("/{attachmentId}")

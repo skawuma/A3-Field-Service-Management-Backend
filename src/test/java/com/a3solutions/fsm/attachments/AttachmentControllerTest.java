@@ -3,6 +3,7 @@ package com.a3solutions.fsm.attachments;
 import com.a3solutions.fsm.exceptions.BusinessRuleException;
 import com.a3solutions.fsm.storage.StorageService;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
+import com.a3solutions.fsm.workorder.WorkOrderEventService;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
 import com.a3solutions.fsm.workorder.WorkOrderService;
 import com.a3solutions.fsm.workorder.WorkOrderStatus;
@@ -32,7 +33,14 @@ class AttachmentControllerTest {
         AttachmentRepository attachmentRepository = mock(AttachmentRepository.class);
         WorkOrderRepository workOrderRepository = mock(WorkOrderRepository.class);
         WorkOrderService workOrderService = mock(WorkOrderService.class);
-        AttachmentController controller = new AttachmentController(storageService, attachmentRepository, workOrderRepository, workOrderService);
+        WorkOrderEventService workOrderEventService = mock(WorkOrderEventService.class);
+        AttachmentController controller = new AttachmentController(
+                storageService,
+                attachmentRepository,
+                workOrderRepository,
+                workOrderService,
+                workOrderEventService
+        );
 
         WorkOrderEntity completedWorkOrder = WorkOrderEntity.builder()
                 .id(33L)
@@ -64,7 +72,14 @@ class AttachmentControllerTest {
         AttachmentRepository attachmentRepository = mock(AttachmentRepository.class);
         WorkOrderRepository workOrderRepository = mock(WorkOrderRepository.class);
         WorkOrderService workOrderService = mock(WorkOrderService.class);
-        AttachmentController controller = new AttachmentController(storageService, attachmentRepository, workOrderRepository, workOrderService);
+        WorkOrderEventService workOrderEventService = mock(WorkOrderEventService.class);
+        AttachmentController controller = new AttachmentController(
+                storageService,
+                attachmentRepository,
+                workOrderRepository,
+                workOrderService,
+                workOrderEventService
+        );
 
         WorkOrderEntity openWorkOrder = WorkOrderEntity.builder()
                 .id(34L)
@@ -94,5 +109,6 @@ class AttachmentControllerTest {
         assertEquals("/files/evidence.txt", body.get("url"));
         verify(storageService).store(file);
         verify(attachmentRepository).save(any(AttachmentEntity.class));
+        verify(workOrderEventService).logAttachmentAdded(openWorkOrder, "evidence.txt", "SYSTEM");
     }
 }

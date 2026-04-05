@@ -113,7 +113,10 @@ public class WorkOrderService {
                 .status(req.status() != null ? req.status() : WorkOrderStatus.OPEN)
                 .build();
 
-        return toDto(repo.save(entity));
+        WorkOrderEntity saved = repo.save(entity);
+        eventService.logCreated(saved, getCurrentActor());
+
+        return toDto(saved);
     }
 
     // =====================================================================
@@ -215,10 +218,19 @@ public class WorkOrderService {
             throw new BusinessRuleException("Technicians cannot change work order status from the notes update endpoint.");
         }
 
+        String previousDescription = normalizeText(existing.getDescription());
+        String nextDescription = normalizeText(req.description());
+
         // TECH may update only limited fields
         existing.setDescription(req.description());
 
-        return toDto(repo.save(existing));
+        WorkOrderEntity saved = repo.save(existing);
+
+        if (!Objects.equals(previousDescription, nextDescription)) {
+            eventService.logNoteAdded(saved, buildTechNoteMessage(previousDescription, nextDescription), getCurrentActor());
+        }
+
+        return toDto(saved);
     }
 
 
@@ -331,14 +343,24 @@ public class WorkOrderService {
 
         String signatureUrl = saveSignatureFromDataUrl(req.signatureDataUrl(), wo.getId(), technicianId);
 
+        WorkOrderStatus previousStatus = wo.getStatus();
         wo.setSignatureUrl(signatureUrl);
         wo.setCompletionNotes(req.completionNotes());
         wo.setCompletedAt(Instant.now());
         wo.setStatus(WorkOrderStatus.COMPLETED);
 
         WorkOrderEntity saved = repo.save(wo);
+        String actor = getCurrentActor();
 
         eventService.logCompleted(saved, req.completionNotes());
+        eventService.recordEvent(
+                saved,
+                WorkOrderEventType.STATUS_CHANGED,
+                "Status changed to COMPLETED.",
+                previousStatus == null ? null : previousStatus.name(),
+                WorkOrderStatus.COMPLETED.name(),
+                actor
+        );
 
         return toDto(saved);
     }
@@ -630,6 +652,27 @@ public class WorkOrderService {
             return "SYSTEM";
         }
         return auth.getName();
+    }
+
+    private String normalizeText(String value) {
+        if (value == null) {
+            return null;
+        }
+
+        String trimmed = value.trim();
+        return trimmed.isEmpty() ? null : trimmed;
+    }
+
+    private String buildTechNoteMessage(String previousDescription, String nextDescription) {
+        if (previousDescription == null && nextDescription != null) {
+            return "Technician added work notes.";
+        }
+
+        if (previousDescription != null && nextDescription == null) {
+            return "Technician cleared work notes.";
+        }
+
+        return "Technician updated work notes.";
     }
 
     @Transactional

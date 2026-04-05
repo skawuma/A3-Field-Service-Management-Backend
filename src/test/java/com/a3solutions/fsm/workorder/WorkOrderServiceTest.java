@@ -101,6 +101,46 @@ class WorkOrderServiceTest {
     }
 
     @Test
+    void createLogsCreatedEvent() {
+        WorkOrderCreateRequest request = new WorkOrderCreateRequest(
+                "Acme",
+                "123 Main",
+                "New install",
+                null,
+                null,
+                "MEDIUM",
+                null
+        );
+
+        WorkOrderEntity savedEntity = WorkOrderEntity.builder()
+                .id(10L)
+                .clientName("Acme")
+                .address("123 Main")
+                .description("New install")
+                .priority("MEDIUM")
+                .status(WorkOrderStatus.OPEN)
+                .build();
+
+        Authentication authentication = Mockito.mock(Authentication.class);
+        when(authentication.getName()).thenReturn("dispatch@a3.com");
+        SecurityContext securityContext = Mockito.mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+
+        when(workOrderRepository.save(any(WorkOrderEntity.class))).thenReturn(savedEntity);
+
+        try (MockedStatic<SecurityContextHolder> securityContextHolder = mockStatic(SecurityContextHolder.class)) {
+            securityContextHolder.when(SecurityContextHolder::getContext).thenReturn(securityContext);
+
+            WorkOrderDto result = workOrderService.create(request);
+
+            assertEquals(10L, result.id());
+            assertEquals(WorkOrderStatus.OPEN, result.status());
+        }
+
+        verify(workOrderEventService).logCreated(savedEntity, "dispatch@a3.com");
+    }
+
+    @Test
     void startWorkOrderMovesAssignedWorkOrderToInProgressForAssignedTech() {
         WorkOrderEntity workOrder = WorkOrderEntity.builder()
                 .id(12L)
@@ -308,6 +348,46 @@ class WorkOrderServiceTest {
     }
 
     @Test
+    void updateTechLogsNoteAddedWhenDescriptionChanges() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(16L)
+                .clientName("Foxtrot")
+                .address("200 River")
+                .description("Original notes")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        when(workOrderRepository.findById(16L)).thenReturn(Optional.of(workOrder));
+        when(workOrderRepository.save(workOrder)).thenReturn(workOrder);
+
+        Authentication authentication = Mockito.mock(Authentication.class);
+        when(authentication.getName()).thenReturn("debs@a3fsm.com");
+        SecurityContext securityContext = Mockito.mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+
+        WorkOrderCreateRequest request = new WorkOrderCreateRequest(
+                "Foxtrot",
+                "200 River",
+                "Updated notes",
+                7L,
+                null,
+                "MEDIUM",
+                WorkOrderStatus.IN_PROGRESS
+        );
+
+        try (MockedStatic<SecurityContextHolder> securityContextHolder = mockStatic(SecurityContextHolder.class)) {
+            securityContextHolder.when(SecurityContextHolder::getContext).thenReturn(securityContext);
+
+            WorkOrderDto result = workOrderService.updateTech(16L, request, 7L);
+
+            assertEquals("Updated notes", result.description());
+        }
+
+        verify(workOrderEventService).logNoteAdded(workOrder, "Technician updated work notes.", "debs@a3fsm.com");
+    }
+
+    @Test
     void completeWorkOrderRejectsNonInProgressWorkOrders() {
         WorkOrderEntity workOrder = WorkOrderEntity.builder()
                 .id(17L)
@@ -406,6 +486,58 @@ class WorkOrderServiceTest {
 
         assertEquals("Signature is required.", ex.getMessage());
         verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void completeWorkOrderLogsCompletionAndStatusChange() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(22L)
+                .clientName("Lima")
+                .address("800 Oak")
+                .description("Repair lock")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        TechnicianEntity technician = TechnicianEntity.builder()
+                .id(7L)
+                .userId(41L)
+                .build();
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(22L)).thenReturn(Optional.of(workOrder));
+        when(workOrderCompletionRepository.existsByWorkOrderId(22L)).thenReturn(true);
+        when(storageService.storeBase64Image(any(), any())).thenReturn("signatures/workorder-22.png");
+        when(workOrderRepository.save(workOrder)).thenReturn(workOrder);
+
+        Authentication authentication = Mockito.mock(Authentication.class);
+        when(authentication.getName()).thenReturn("debs@a3fsm.com");
+        SecurityContext securityContext = Mockito.mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+
+        CompleteWorkOrderRequest request = new CompleteWorkOrderRequest(
+                "data:image/png;base64,AAAA",
+                "Signed off"
+        );
+
+        try (MockedStatic<SecurityContextHolder> securityContextHolder = mockStatic(SecurityContextHolder.class)) {
+            securityContextHolder.when(SecurityContextHolder::getContext).thenReturn(securityContext);
+
+            WorkOrderDto result = workOrderService.completeWorkOrder(22L, request, 41L);
+
+            assertEquals(WorkOrderStatus.COMPLETED, result.status());
+            assertEquals("signatures/workorder-22.png", result.signatureUrl());
+        }
+
+        verify(workOrderEventService).logCompleted(workOrder, "Signed off");
+        verify(workOrderEventService).recordEvent(
+                eq(workOrder),
+                eq(WorkOrderEventType.STATUS_CHANGED),
+                eq("Status changed to COMPLETED."),
+                eq("IN_PROGRESS"),
+                eq("COMPLETED"),
+                eq("debs@a3fsm.com")
+        );
     }
 
     @Test
