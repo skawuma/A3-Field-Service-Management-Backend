@@ -16,6 +16,6 @@ public enum WorkOrderEventType {
     SCHEDULED_DATE_CHANGED,
     NOTE_ADDED,
     ATTACHMENT_ADDED,
-    COMPLETED
+    REOPENED, COMPLETED
 
 }

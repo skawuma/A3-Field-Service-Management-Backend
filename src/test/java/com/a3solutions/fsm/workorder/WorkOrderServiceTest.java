@@ -3,6 +3,7 @@ package com.a3solutions.fsm.workorder;
 import com.a3solutions.fsm.storage.StorageService;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
+import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionEntity;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRepository;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -11,6 +12,7 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
+import java.time.Instant;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -184,6 +186,59 @@ class WorkOrderServiceTest {
                 eq("ASSIGNED"),
                 eq("OPEN"),
                 eq("debs@a3fsm.com")
+        );
+    }
+
+    @Test
+    void reopenWorkOrderResetsCompletedStateAndDeletesCompletionReport() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(14L)
+                .clientName("Delta")
+                .address("900 Cedar")
+                .description("Replace control board")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.COMPLETED)
+                .signatureUrl("signatures/workorder-14.png")
+                .completionNotes("Completed on first visit")
+                .completedAt(Instant.parse("2026-04-04T12:00:00Z"))
+                .build();
+
+        WorkOrderCompletionEntity completion = new WorkOrderCompletionEntity();
+        completion.setWorkOrder(workOrder);
+
+        when(workOrderRepository.findById(14L)).thenReturn(Optional.of(workOrder));
+        when(workOrderCompletionRepository.findByWorkOrderId(14L)).thenReturn(Optional.of(completion));
+        when(workOrderRepository.save(workOrder)).thenReturn(workOrder);
+
+        Authentication authentication = org.mockito.Mockito.mock(Authentication.class);
+        when(authentication.getName()).thenReturn("admin@a3fsm.com");
+        SecurityContext securityContext = org.mockito.Mockito.mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(authentication);
+
+        try (MockedStatic<SecurityContextHolder> securityContextHolder = mockStatic(SecurityContextHolder.class)) {
+            securityContextHolder.when(SecurityContextHolder::getContext).thenReturn(securityContext);
+
+            WorkOrderDto result = workOrderService.reopenWorkOrder(14L, "needs new work");
+
+            assertEquals(WorkOrderStatus.OPEN, workOrder.getStatus());
+            assertEquals(WorkOrderStatus.OPEN, result.status());
+            assertEquals(null, workOrder.getAssignedTechId());
+            assertEquals(null, result.assignedTechId());
+            assertEquals(null, workOrder.getCompletedAt());
+            assertEquals(null, workOrder.getCompletionNotes());
+            assertEquals(null, workOrder.getSignatureUrl());
+        }
+
+        verify(storageService).delete("signatures/workorder-14.png");
+        verify(workOrderCompletionRepository).delete(completion);
+        verify(workOrderEventService).logReopened(workOrder, "needs new work");
+        verify(workOrderEventService).recordEvent(
+                eq(workOrder),
+                eq(WorkOrderEventType.STATUS_CHANGED),
+                eq("Status changed to OPEN."),
+                eq("COMPLETED"),
+                eq("OPEN"),
+                eq("admin@a3fsm.com")
         );
     }
 }

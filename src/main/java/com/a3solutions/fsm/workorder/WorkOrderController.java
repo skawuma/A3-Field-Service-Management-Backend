@@ -272,5 +272,14 @@ public class WorkOrderController {
 
         return service.getSignature(id);
     }
+    @PostMapping("/{id}/reopen")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
+    public ResponseEntity<WorkOrderDto> reopenWorkOrder(
+            @PathVariable Long id,
+            @RequestBody(required = false) ReopenWorkOrderRequest request
+    ) {
+        String reason = request != null ? request.reason() : null;
+        return ResponseEntity.ok(service.reopenWorkOrder(id, reason));
+    }
 
 }

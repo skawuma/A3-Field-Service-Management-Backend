@@ -10,6 +10,8 @@ import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionEntity;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRepository;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRequest;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionResponse;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
@@ -38,6 +40,8 @@ import org.springframework.security.core.context.SecurityContextHolder;
  */
 @Service
 public class WorkOrderService {
+    private static final Logger log = LoggerFactory.getLogger(WorkOrderService.class);
+
     private final StorageService storageService;
     private final WorkOrderRepository repo;
     private final TechnicianRepository technicianRepo;
@@ -573,7 +577,7 @@ public class WorkOrderService {
     @Transactional(readOnly = true)
     public WorkOrderCompletionResponse getCompletionByWorkOrderId(Long workOrderId) {
         WorkOrderCompletionEntity completion = workOrderCompletionRepository.findByWorkOrderId(workOrderId)
-                .orElseThrow(() -> new RuntimeException("No completion report found for work order id: " + workOrderId));
+                .orElseThrow(() -> new NotFoundException("No completion report found for work order id: " + workOrderId));
 
         return mapToCompletionResponse(completion);
     }
@@ -584,6 +588,51 @@ public class WorkOrderService {
             return "SYSTEM";
         }
         return auth.getName();
+    }
+
+    @Transactional
+    public WorkOrderDto reopenWorkOrder(Long id, String reason) {
+        WorkOrderEntity wo = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+
+        if (wo.getStatus() != WorkOrderStatus.COMPLETED) {
+            throw new BusinessRuleException("Only COMPLETED work orders can be reopened.");
+        }
+
+        String previousSignatureUrl = wo.getSignatureUrl();
+
+        wo.setStatus(WorkOrderStatus.OPEN);
+        wo.setCompletedAt(null);
+        wo.setCompletionNotes(null);
+        wo.setSignatureUrl(null);
+        wo.setAssignedTechId(null);
+
+        workOrderCompletionRepository.findByWorkOrderId(id)
+                .ifPresent(workOrderCompletionRepository::delete);
+
+        WorkOrderEntity saved = repo.save(wo);
+        String actor = getCurrentActor();
+
+        if (previousSignatureUrl != null && !previousSignatureUrl.isBlank()) {
+            try {
+                storageService.delete(previousSignatureUrl);
+            } catch (RuntimeException ex) {
+                log.warn("Failed to delete reopened work order signature file {}", previousSignatureUrl, ex);
+            }
+        }
+
+        eventService.logReopened(saved, reason);
+
+        eventService.recordEvent(
+                saved,
+                WorkOrderEventType.STATUS_CHANGED,
+                "Status changed to OPEN.",
+                WorkOrderStatus.COMPLETED.name(),
+                WorkOrderStatus.OPEN.name(),
+                actor
+        );
+
+        return toDto(saved);
     }
 
 }

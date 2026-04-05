@@ -113,4 +113,18 @@ public class WorkOrderEventService {
 
         return principal.toString();
     }
+
+    @Transactional
+    public void logReopened(WorkOrderEntity wo, String notes) {
+        recordEvent(
+                wo,
+                WorkOrderEventType.REOPENED,
+                notes == null || notes.isBlank()
+                        ? "Work order was reopened by admin/dispatch."
+                        : "Work order was reopened by admin/dispatch. Reason: " + notes,
+                null,
+                null,
+                getActor()
+        );
+    }
 }
