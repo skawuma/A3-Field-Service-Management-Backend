@@ -22,6 +22,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.net.URLConnection;
 import java.util.Map;
 
 /**
@@ -79,6 +80,7 @@ public class AttachmentController {
                 .workOrderId(workOrderId)
                 .filename(file.getOriginalFilename())
                 .url(url)
+                .contentType(file.getContentType())
                 .sizeBytes(file.getSize())
                 .uploadedBy(actor)
                 .build();
@@ -90,6 +92,7 @@ public class AttachmentController {
                 "id", entity.getId(),
                 "filename", entity.getFilename(),
                 "url", entity.getUrl(),
+                "contentType", resolveContentType(entity),
                 "size", entity.getSizeBytes()
         ));
     }
@@ -108,6 +111,7 @@ public class AttachmentController {
                                 "id", att.getId(),
                                 "filename", att.getFilename(),
                                 "url", att.getUrl(),
+                                "contentType", resolveContentType(att),
                                 "size", att.getSizeBytes()
                         ))
                         .toList()
@@ -160,6 +164,15 @@ public class AttachmentController {
             return "SYSTEM";
         }
         return auth.getName();
+    }
+
+    private String resolveContentType(AttachmentEntity attachment) {
+        if (attachment.getContentType() != null && !attachment.getContentType().isBlank()) {
+            return attachment.getContentType();
+        }
+
+        String guessed = URLConnection.guessContentTypeFromName(attachment.getFilename());
+        return guessed != null ? guessed : "application/octet-stream";
     }
 
     @DeleteMapping("/{attachmentId}")

@@ -30,6 +30,8 @@ public class AttachmentEntity {
 
     private String url;
 
+    private String contentType;
+
     private long sizeBytes;
 
     private Instant uploadedAt = Instant.now();

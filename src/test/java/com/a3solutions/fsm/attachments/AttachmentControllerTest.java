@@ -12,8 +12,10 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
+import org.springframework.security.core.Authentication;
 
 import java.util.Map;
+import java.util.List;
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -107,8 +109,42 @@ class AttachmentControllerTest {
         assertEquals(200, response.getStatusCode().value());
         assertEquals(99L, body.get("id"));
         assertEquals("/files/evidence.txt", body.get("url"));
+        assertEquals("text/plain", body.get("contentType"));
         verify(storageService).store(file);
         verify(attachmentRepository).save(any(AttachmentEntity.class));
         verify(workOrderEventService).logAttachmentAdded(openWorkOrder, "evidence.txt", "SYSTEM");
+    }
+
+    @Test
+    void listIncludesContentTypeForPreview() {
+        StorageService storageService = mock(StorageService.class);
+        AttachmentRepository attachmentRepository = mock(AttachmentRepository.class);
+        WorkOrderRepository workOrderRepository = mock(WorkOrderRepository.class);
+        WorkOrderService workOrderService = mock(WorkOrderService.class);
+        WorkOrderEventService workOrderEventService = mock(WorkOrderEventService.class);
+        AttachmentController controller = new AttachmentController(
+                storageService,
+                attachmentRepository,
+                workOrderRepository,
+                workOrderService,
+                workOrderEventService
+        );
+
+        AttachmentEntity imageAttachment = AttachmentEntity.builder()
+                .id(101L)
+                .workOrderId(34L)
+                .filename("onsite-photo.jpg")
+                .url("/files/onsite-photo.jpg")
+                .sizeBytes(2048)
+                .build();
+
+        when(attachmentRepository.findByWorkOrderId(34L)).thenReturn(List.of(imageAttachment));
+
+        ResponseEntity<?> response = controller.list(34L, mock(Authentication.class));
+        List<?> body = (List<?>) response.getBody();
+        Map<?, ?> first = (Map<?, ?>) body.get(0);
+
+        assertEquals(200, response.getStatusCode().value());
+        assertEquals("image/jpeg", first.get("contentType"));
     }
 }
