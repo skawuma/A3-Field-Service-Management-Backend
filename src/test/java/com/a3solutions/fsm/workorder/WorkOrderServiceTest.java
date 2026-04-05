@@ -173,6 +173,34 @@ class WorkOrderServiceTest {
     }
 
     @Test
+    void startWorkOrderRejectsCancelledWorkOrder() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(12L)
+                .clientName("Beta")
+                .address("456 Oak")
+                .description("Repair sensor")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.CANCELLED)
+                .build();
+
+        TechnicianEntity technician = TechnicianEntity.builder()
+                .id(7L)
+                .userId(41L)
+                .build();
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(12L)).thenReturn(Optional.of(workOrder));
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.startWorkOrder(12L, 41L)
+        );
+
+        assertEquals("Cancelled work orders cannot be started.", ex.getMessage());
+        verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
     void returnWorkOrderToOpenClearsAssignmentForReassignment() {
         WorkOrderEntity workOrder = WorkOrderEntity.builder()
                 .id(13L)
@@ -231,6 +259,34 @@ class WorkOrderServiceTest {
     }
 
     @Test
+    void returnWorkOrderToOpenRejectsInProgressWorkOrders() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(13L)
+                .clientName("Gamma")
+                .address("789 Pine")
+                .description("Install panel")
+                .assignedTechId(7L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        TechnicianEntity technician = TechnicianEntity.builder()
+                .id(7L)
+                .userId(41L)
+                .build();
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(13L)).thenReturn(Optional.of(workOrder));
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.returnWorkOrderToOpen(13L, 41L, "delay")
+        );
+
+        assertEquals("Started work orders cannot be returned to OPEN from this screen.", ex.getMessage());
+        verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
     void reopenWorkOrderResetsCompletedStateAndDeletesCompletionReport() {
         WorkOrderEntity workOrder = WorkOrderEntity.builder()
                 .id(14L)
@@ -281,6 +337,27 @@ class WorkOrderServiceTest {
                 eq("OPEN"),
                 eq("admin@a3fsm.com")
         );
+    }
+
+    @Test
+    void reopenWorkOrderRejectsNonCompletedWorkOrders() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(14L)
+                .clientName("Delta")
+                .address("900 Cedar")
+                .description("Replace control board")
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+
+        when(workOrderRepository.findById(14L)).thenReturn(Optional.of(workOrder));
+
+        BusinessRuleException ex = assertThrows(
+                BusinessRuleException.class,
+                () -> workOrderService.reopenWorkOrder(14L, "needs review")
+        );
+
+        assertEquals("Only COMPLETED work orders can be reopened.", ex.getMessage());
+        verify(workOrderRepository, never()).save(any());
     }
 
     @Test
