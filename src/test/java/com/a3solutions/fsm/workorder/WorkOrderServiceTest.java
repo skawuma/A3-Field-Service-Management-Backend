@@ -584,7 +584,8 @@ class WorkOrderServiceTest {
         when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
         when(workOrderRepository.findById(22L)).thenReturn(Optional.of(workOrder));
         when(workOrderCompletionRepository.existsByWorkOrderId(22L)).thenReturn(true);
-        when(storageService.storeBase64Image(any(), any())).thenReturn("signatures/workorder-22.png");
+        when(storageService.storeBytes(any(byte[].class), any(String.class), eq("image/png")))
+                .thenReturn("signatures/workorder-22.png");
         when(workOrderRepository.save(workOrder)).thenReturn(workOrder);
 
         Authentication authentication = Mockito.mock(Authentication.class);
