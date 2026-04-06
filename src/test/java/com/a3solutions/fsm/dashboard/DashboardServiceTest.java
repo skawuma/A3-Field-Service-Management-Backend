@@ -39,13 +39,21 @@ class DashboardServiceTest {
     private DashboardService dashboardService;
 
     @Test
-    void getSummaryIncludesCompletedTodayAndHighPriorityOpen() {
+    void getSummaryIncludesSlaBucketsAndCompletionMetrics() {
         when(technicianRepository.count()).thenReturn(9L);
         when(workOrderRepository.count()).thenReturn(42L);
         when(workOrderRepository.countByStatus(WorkOrderStatus.OPEN)).thenReturn(11L);
         when(workOrderRepository.countByStatus(WorkOrderStatus.IN_PROGRESS)).thenReturn(7L);
         when(workOrderRepository.countByAssignedTechIdIsNull()).thenReturn(3L);
         when(workOrderRepository.countByScheduledDate(any(LocalDate.class))).thenReturn(6L);
+        when(workOrderRepository.countByScheduledDateAndStatusNotIn(
+                any(LocalDate.class),
+                any(Collection.class)
+        )).thenReturn(4L);
+        when(workOrderRepository.countByScheduledDateBeforeAndStatusNotIn(
+                any(LocalDate.class),
+                any(Collection.class)
+        )).thenReturn(2L);
         when(workOrderRepository.countByStatusAndCompletedAtBetween(
                 eq(WorkOrderStatus.COMPLETED),
                 any(Instant.class),
@@ -64,6 +72,8 @@ class DashboardServiceTest {
         assertEquals(7L, summary.inProgressWorkOrders());
         assertEquals(3L, summary.unassignedWorkOrders());
         assertEquals(6L, summary.scheduledToday());
+        assertEquals(4L, summary.dueTodayWorkOrders());
+        assertEquals(2L, summary.overdueWorkOrders());
         assertEquals(5L, summary.completedToday());
         assertEquals(4L, summary.highPriorityOpen());
     }

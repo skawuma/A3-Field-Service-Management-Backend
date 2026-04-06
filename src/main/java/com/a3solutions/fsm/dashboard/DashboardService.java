@@ -27,6 +27,10 @@ import java.util.stream.Collectors;
  */
 @Service
 public class DashboardService {
+    private static final List<WorkOrderStatus> TERMINAL_STATUSES = List.of(
+            WorkOrderStatus.COMPLETED,
+            WorkOrderStatus.CANCELLED
+    );
     private static final List<String> STATUS_BUCKET_ORDER = List.of(
             "OPEN",
             "ASSIGNED",
@@ -58,10 +62,12 @@ public class DashboardService {
         long open = woRepo.countByStatus(WorkOrderStatus.OPEN);
         long inProgress = woRepo.countByStatus(WorkOrderStatus.IN_PROGRESS);
         long unassigned = woRepo.countByAssignedTechIdIsNull();
-        long today = woRepo.countByScheduledDate(LocalDate.now());
 
         ZoneId zone = ZoneId.systemDefault();
         LocalDate currentDate = LocalDate.now(zone);
+        long scheduledToday = woRepo.countByScheduledDate(currentDate);
+        long dueToday = woRepo.countByScheduledDateAndStatusNotIn(currentDate, TERMINAL_STATUSES);
+        long overdue = woRepo.countByScheduledDateBeforeAndStatusNotIn(currentDate, TERMINAL_STATUSES);
         Instant startOfDay = currentDate.atStartOfDay(zone).toInstant();
         Instant startOfTomorrow = currentDate.plusDays(1).atStartOfDay(zone).toInstant();
 
@@ -82,7 +88,9 @@ public class DashboardService {
                 open,
                 inProgress,
                 unassigned,
-                today,
+                scheduledToday,
+                dueToday,
+                overdue,
                 completedToday,
                 highPriorityOpen
         );
