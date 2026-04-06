@@ -34,9 +34,9 @@ public class LoggingAspect {
             long time = System.currentTimeMillis() - start;
             log.info("Exiting {} ({} ms)", method, time);
             return result;
-        } catch (Exception ex) {
+        } catch (Throwable ex) {
             long time = System.currentTimeMillis() - start;
-            log.error("Exception in {} after {} ms: {}", method, time, ex.getMessage());
+            log.error("Exception in {} after {} ms", method, time, ex);
             throw ex;
         }
     }
