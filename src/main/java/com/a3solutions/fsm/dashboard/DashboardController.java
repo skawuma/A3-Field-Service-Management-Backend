@@ -39,4 +39,10 @@ public class DashboardController {
     ) {
         return ResponseEntity.ok(service.getRecentActivity(limit));
     }
+
+    @GetMapping("/analytics")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
+    public ResponseEntity<DashboardAnalytics> getAnalytics() {
+        return ResponseEntity.ok(service.getAnalytics());
+    }
 }

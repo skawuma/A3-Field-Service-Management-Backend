@@ -1,11 +1,15 @@
 package com.a3solutions.fsm.workorder;
 
+import com.a3solutions.fsm.dashboard.DashboardBucketProjection;
+import com.a3solutions.fsm.dashboard.DashboardDateBucketProjection;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
+import org.springframework.data.jpa.repository.Query;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
 
 /**
  * @author samuelkawuma
@@ -20,5 +24,32 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long
     long countByScheduledDate(LocalDate date);
     long countByStatusAndCompletedAtBetween(WorkOrderStatus status, Instant startInclusive, Instant endExclusive);
     long countByStatusAndPriorityIn(WorkOrderStatus status, Collection<String> priorities);
+    @Query(value = """
+            select status as bucketKey, count(*) as total
+            from work_orders
+            group by status
+            """, nativeQuery = true)
+    List<DashboardBucketProjection> countWorkOrdersByStatus();
+
+    @Query(value = """
+            select coalesce(priority, 'UNSPECIFIED') as bucketKey, count(*) as total
+            from work_orders
+            group by coalesce(priority, 'UNSPECIFIED')
+            """, nativeQuery = true)
+    List<DashboardBucketProjection> countWorkOrdersByPriority();
+
+    @Query(value = """
+            select cast(completed_at as date) as bucketDate, count(*) as total
+            from work_orders
+            where status = 'COMPLETED'
+              and completed_at >= :startInclusive
+              and completed_at < :endExclusive
+            group by cast(completed_at as date)
+            order by bucketDate
+            """, nativeQuery = true)
+    List<DashboardDateBucketProjection> countCompletionsByCompletedDate(
+            Instant startInclusive,
+            Instant endExclusive
+    );
 
 }

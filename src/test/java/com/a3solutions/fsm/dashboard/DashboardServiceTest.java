@@ -13,6 +13,10 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
+import java.util.List;
+import java.util.Map;
+import java.util.function.Function;
+import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
@@ -62,5 +66,80 @@ class DashboardServiceTest {
         assertEquals(6L, summary.scheduledToday());
         assertEquals(5L, summary.completedToday());
         assertEquals(4L, summary.highPriorityOpen());
+    }
+
+    @Test
+    void getAnalyticsBuildsStableDashboardBuckets() {
+        LocalDate today = LocalDate.now();
+
+        when(workOrderRepository.countWorkOrdersByStatus()).thenReturn(List.of(
+                bucket("OPEN", 5L),
+                bucket("IN_PROGRESS", 3L),
+                bucket("COMPLETED", 8L)
+        ));
+        when(workOrderRepository.countWorkOrdersByPriority()).thenReturn(List.of(
+                bucket("LOW", 2L),
+                bucket("HIGH", 6L),
+                bucket("CRITICAL", 1L)
+        ));
+        when(workOrderRepository.countCompletionsByCompletedDate(any(Instant.class), any(Instant.class))).thenReturn(List.of(
+                dateBucket(today.minusDays(1L), 4L),
+                dateBucket(today, 2L)
+        ));
+
+        DashboardAnalytics analytics = dashboardService.getAnalytics();
+
+        Map<String, Long> statusTotals = analytics.workOrdersByStatus().stream()
+                .collect(Collectors.toMap(DashboardChartDatum::key, DashboardChartDatum::total));
+        Map<String, Long> priorityTotals = analytics.workOrdersByPriority().stream()
+                .collect(Collectors.toMap(DashboardChartDatum::key, DashboardChartDatum::total));
+        Map<LocalDate, Long> trendTotals = analytics.completionTrend().stream()
+                .collect(Collectors.toMap(DashboardTrendPoint::date, DashboardTrendPoint::total));
+
+        assertEquals(5, analytics.workOrdersByStatus().size());
+        assertEquals(5L, statusTotals.get("OPEN"));
+        assertEquals(0L, statusTotals.get("ASSIGNED"));
+        assertEquals(3L, statusTotals.get("IN_PROGRESS"));
+        assertEquals(8L, statusTotals.get("COMPLETED"));
+        assertEquals(0L, statusTotals.get("CANCELLED"));
+
+        assertEquals(5, analytics.workOrdersByPriority().size());
+        assertEquals(2L, priorityTotals.get("LOW"));
+        assertEquals(0L, priorityTotals.get("MEDIUM"));
+        assertEquals(6L, priorityTotals.get("HIGH"));
+        assertEquals(1L, priorityTotals.get("CRITICAL"));
+        assertEquals(0L, priorityTotals.get("UNSPECIFIED"));
+
+        assertEquals(7, analytics.completionTrend().size());
+        assertEquals(4L, trendTotals.get(today.minusDays(1L)));
+        assertEquals(2L, trendTotals.get(today));
+    }
+
+    private DashboardBucketProjection bucket(String key, long total) {
+        return new DashboardBucketProjection() {
+            @Override
+            public String getBucketKey() {
+                return key;
+            }
+
+            @Override
+            public long getTotal() {
+                return total;
+            }
+        };
+    }
+
+    private DashboardDateBucketProjection dateBucket(LocalDate bucketDate, long total) {
+        return new DashboardDateBucketProjection() {
+            @Override
+            public LocalDate getBucketDate() {
+                return bucketDate;
+            }
+
+            @Override
+            public long getTotal() {
+                return total;
+            }
+        };
     }
 }

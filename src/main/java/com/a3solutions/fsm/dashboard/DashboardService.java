@@ -13,7 +13,11 @@ import org.springframework.stereotype.Service;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.time.format.DateTimeFormatter;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 /**
  * @author samuelkawuma
@@ -23,6 +27,17 @@ import java.util.List;
  */
 @Service
 public class DashboardService {
+    private static final List<String> STATUS_BUCKET_ORDER = List.of(
+            "OPEN",
+            "ASSIGNED",
+            "IN_PROGRESS",
+            "COMPLETED",
+            "CANCELLED"
+    );
+    private static final List<String> PRIORITY_BUCKET_ORDER = List.of("LOW", "MEDIUM", "HIGH", "CRITICAL", "UNSPECIFIED");
+    private static final int COMPLETION_TREND_DAYS = 7;
+    private static final DateTimeFormatter TREND_LABEL_FORMATTER = DateTimeFormatter.ofPattern("MMM d");
+
     private final TechnicianRepository techRepo;
     private final WorkOrderRepository woRepo;
     private final WorkOrderEventRepository workOrderEventRepository;
@@ -71,6 +86,66 @@ public class DashboardService {
                 completedToday,
                 highPriorityOpen
         );
+    }
+
+    public DashboardAnalytics getAnalytics() {
+        Map<String, Long> rawStatusCounts = woRepo.countWorkOrdersByStatus()
+                .stream()
+                .collect(Collectors.toMap(
+                        DashboardBucketProjection::getBucketKey,
+                        DashboardBucketProjection::getTotal
+                ));
+
+        Map<String, Long> rawPriorityCounts = woRepo.countWorkOrdersByPriority()
+                .stream()
+                .collect(Collectors.toMap(
+                        DashboardBucketProjection::getBucketKey,
+                        DashboardBucketProjection::getTotal
+                ));
+
+        Map<String, Long> statusCounts = normalizeStatusBuckets(rawStatusCounts);
+        Map<String, Long> priorityCounts = normalizePriorityBuckets(rawPriorityCounts);
+
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate currentDate = LocalDate.now(zone);
+        LocalDate startDate = currentDate.minusDays(COMPLETION_TREND_DAYS - 1L);
+        Instant trendStart = startDate.atStartOfDay(zone).toInstant();
+        Instant trendEnd = currentDate.plusDays(1L).atStartOfDay(zone).toInstant();
+
+        Map<LocalDate, Long> completionCounts = woRepo.countCompletionsByCompletedDate(trendStart, trendEnd)
+                .stream()
+                .collect(Collectors.toMap(
+                        DashboardDateBucketProjection::getBucketDate,
+                        DashboardDateBucketProjection::getTotal
+                ));
+
+        List<DashboardChartDatum> workOrdersByStatus = statusCounts.entrySet()
+                .stream()
+                .map(entry -> new DashboardChartDatum(
+                        entry.getKey(),
+                        formatStatusLabel(WorkOrderStatus.valueOf(entry.getKey())),
+                        entry.getValue()
+                ))
+                .toList();
+
+        List<DashboardChartDatum> workOrdersByPriority = priorityCounts.entrySet()
+                .stream()
+                .map(entry -> new DashboardChartDatum(
+                        entry.getKey(),
+                        formatPriorityLabel(entry.getKey()),
+                        entry.getValue()
+                ))
+                .toList();
+
+        List<DashboardTrendPoint> completionTrend = startDate.datesUntil(currentDate.plusDays(1L))
+                .map(day -> new DashboardTrendPoint(
+                        day,
+                        day.format(TREND_LABEL_FORMATTER),
+                        completionCounts.getOrDefault(day, 0L)
+                ))
+                .toList();
+
+        return new DashboardAnalytics(workOrdersByStatus, workOrdersByPriority, completionTrend);
     }
 
     public List<DashboardRecentActivityItem> getRecentActivity(int limit) {
@@ -149,5 +224,43 @@ public class DashboardService {
         }
 
         return "technician";
+    }
+
+    private String formatStatusLabel(WorkOrderStatus status) {
+        return switch (status) {
+            case OPEN -> "Open";
+            case ASSIGNED -> "Assigned";
+            case IN_PROGRESS -> "In Progress";
+            case COMPLETED -> "Completed";
+            case CANCELLED -> "Cancelled";
+        };
+    }
+
+    private String formatPriorityLabel(String priority) {
+        return switch (priority) {
+            case "LOW" -> "Low";
+            case "MEDIUM" -> "Medium";
+            case "HIGH" -> "High";
+            case "CRITICAL" -> "Critical";
+            default -> "Unspecified";
+        };
+    }
+
+    private Map<String, Long> normalizeStatusBuckets(Map<String, Long> raw) {
+        return normalizeBuckets(raw, STATUS_BUCKET_ORDER);
+    }
+
+    private Map<String, Long> normalizePriorityBuckets(Map<String, Long> raw) {
+        return normalizeBuckets(raw, PRIORITY_BUCKET_ORDER);
+    }
+
+    private Map<String, Long> normalizeBuckets(Map<String, Long> raw, List<String> orderedKeys) {
+        LinkedHashMap<String, Long> normalized = new LinkedHashMap<>();
+
+        for (String key : orderedKeys) {
+            normalized.put(key, raw.getOrDefault(key, 0L));
+        }
+
+        return normalized;
     }
 }
