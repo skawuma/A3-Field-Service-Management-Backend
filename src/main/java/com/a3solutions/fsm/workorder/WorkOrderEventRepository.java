@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.workorder;
 
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 import java.util.List;
@@ -13,4 +14,5 @@ import java.util.List;
 public interface WorkOrderEventRepository extends JpaRepository<WorkOrderEventEntity, Long> {
 
     List<WorkOrderEventEntity> findByWorkOrderIdOrderByCreatedAtAsc(Long workOrderId);
+    List<WorkOrderEventEntity> findAllByOrderByCreatedAtDesc(Pageable pageable);
 }
