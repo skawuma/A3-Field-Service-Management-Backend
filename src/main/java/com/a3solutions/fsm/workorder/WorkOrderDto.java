@@ -16,6 +16,7 @@ public record WorkOrderDto(
         String description,
         WorkOrderStatus status,
         Long assignedTechId,
+        String assignedTechnicianName,
         LocalDate scheduledDate,
         String priority,
         String signatureUrl,

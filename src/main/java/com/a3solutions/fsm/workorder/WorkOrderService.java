@@ -21,8 +21,12 @@ import com.a3solutions.fsm.storage.StorageService;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.Base64;
+import java.util.Collection;
+import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
@@ -30,6 +34,7 @@ import org.springframework.http.ResponseEntity;
 
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.stream.Collectors;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 /**
@@ -79,9 +84,12 @@ public class WorkOrderService {
                 .and(WorkOrderSpecification.assignedTo(technicianId));
 
         Page<WorkOrderEntity> results = repo.findAll(spec, pageable);
+        Map<Long, String> assignedTechnicianNames = resolveAssignedTechnicianNames(results.getContent());
 
         return PageResponse.of(
-                results.map(this::toDto).getContent(),
+                results.getContent().stream()
+                        .map(workOrder -> toDto(workOrder, assignedTechnicianNames))
+                        .toList(),
                 results.getNumber(),
                 results.getSize(),
                 results.getTotalElements()
@@ -172,7 +180,7 @@ public class WorkOrderService {
         }
 
         // 6. Return updated DTO
-        return toDto(saved);
+        return toDto(saved, technicianName);
     }
 
 
@@ -299,6 +307,14 @@ public class WorkOrderService {
     }
 
     private WorkOrderDto toDto(WorkOrderEntity e) {
+        return toDto(e, resolveAssignedTechnicianNames(List.of(e)));
+    }
+
+    private WorkOrderDto toDto(WorkOrderEntity e, Map<Long, String> assignedTechnicianNames) {
+        return toDto(e, assignedTechnicianNames.get(e.getAssignedTechId()));
+    }
+
+    private WorkOrderDto toDto(WorkOrderEntity e, String assignedTechnicianName) {
         return new WorkOrderDto(
                 e.getId(),
                 e.getClientName(),
@@ -306,12 +322,30 @@ public class WorkOrderService {
                 e.getDescription(),
                 e.getStatus(),
                 e.getAssignedTechId(),
+                assignedTechnicianName,
                 e.getScheduledDate(),
                 e.getPriority(),
                 e.getSignatureUrl(),
                 e.getCompletionNotes(),
                 e.getCompletedAt()
         );
+    }
+
+    private Map<Long, String> resolveAssignedTechnicianNames(Collection<WorkOrderEntity> workOrders) {
+        Set<Long> assignedTechIds = workOrders.stream()
+                .map(WorkOrderEntity::getAssignedTechId)
+                .filter(Objects::nonNull)
+                .collect(Collectors.toSet());
+
+        if (assignedTechIds.isEmpty()) {
+            return Collections.emptyMap();
+        }
+
+        return technicianRepo.findAllById(assignedTechIds).stream()
+                .collect(Collectors.toMap(
+                        TechnicianEntity::getId,
+                        TechnicianEntity::getFullName
+                ));
     }
 
 

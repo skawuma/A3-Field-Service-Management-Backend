@@ -80,6 +80,7 @@ class WorkOrderServiceTest {
         assertEquals(7L, workOrder.getAssignedTechId());
         assertEquals(WorkOrderStatus.ASSIGNED, result.status());
         assertEquals(7L, result.assignedTechId());
+        assertEquals("Taylor Lane", result.assignedTechnicianName());
 
         verify(workOrderEventService).recordEvent(
                 eq(workOrder),
