@@ -2,6 +2,7 @@ package com.a3solutions.fsm.workorder;
 
 import com.a3solutions.fsm.dashboard.DashboardBucketProjection;
 import com.a3solutions.fsm.dashboard.DashboardDateBucketProjection;
+import org.springframework.data.domain.Pageable;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.JpaSpecificationExecutor;
 import org.springframework.data.jpa.repository.Query;
@@ -52,6 +53,18 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long
     List<DashboardDateBucketProjection> countCompletionsByCompletedDate(
             Instant startInclusive,
             Instant endExclusive
+    );
+
+    List<WorkOrderEntity> findByScheduledDateBeforeAndStatusInOrderByScheduledDateAscIdAsc(
+            LocalDate scheduledDate,
+            List<WorkOrderStatus> statuses,
+            Pageable pageable
+    );
+
+    List<WorkOrderEntity> findByScheduledDateAndStatusInOrderByIdDesc(
+            LocalDate scheduledDate,
+            List<WorkOrderStatus> statuses,
+            Pageable pageable
     );
 
 }

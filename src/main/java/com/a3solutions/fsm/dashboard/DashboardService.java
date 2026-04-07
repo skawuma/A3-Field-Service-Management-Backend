@@ -46,6 +46,13 @@ public class DashboardService {
     private final WorkOrderRepository woRepo;
     private final WorkOrderEventRepository workOrderEventRepository;
 
+    private static final int SLA_LIST_LIMIT = 5;
+    private static final List<WorkOrderStatus> ACTIVE_SLA_STATUSES = List.of(
+            WorkOrderStatus.OPEN,
+            WorkOrderStatus.ASSIGNED,
+            WorkOrderStatus.IN_PROGRESS
+    );
+
     public DashboardService(
             TechnicianRepository techRepo,
             WorkOrderRepository woRepo,
@@ -270,5 +277,90 @@ public class DashboardService {
         }
 
         return normalized;
+    }
+
+    public DashboardSlaSummary getSlaSummary() {
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate currentDate = LocalDate.now(zone);
+
+        long dueToday = woRepo.countByScheduledDateAndStatusNotIn(currentDate, TERMINAL_STATUSES);
+        long overdue = woRepo.countByScheduledDateBeforeAndStatusNotIn(currentDate, TERMINAL_STATUSES);
+
+        List<DashboardSlaWorkOrderItem> overdueItems = woRepo
+                .findByScheduledDateBeforeAndStatusInOrderByScheduledDateAscIdAsc(
+                        currentDate,
+                        ACTIVE_SLA_STATUSES,
+                        PageRequest.of(0, SLA_LIST_LIMIT)
+                )
+                .stream()
+                .map(workOrder -> toSlaItem(workOrder, currentDate))
+                .toList();
+
+        List<DashboardSlaWorkOrderItem> dueTodayItems = woRepo
+                .findByScheduledDateAndStatusInOrderByIdDesc(
+                        currentDate,
+                        ACTIVE_SLA_STATUSES,
+                        PageRequest.of(0, SLA_LIST_LIMIT)
+                )
+                .stream()
+                .map(workOrder -> toSlaItem(workOrder, currentDate))
+                .toList();
+
+        return new DashboardSlaSummary(
+                overdue,
+                dueToday,
+                overdueItems,
+                dueTodayItems
+        );
+    }
+
+
+
+    private DashboardSlaWorkOrderItem toSlaItem(WorkOrderEntity workOrder, LocalDate currentDate) {
+        Long workOrderId = workOrder.getId();
+        String workOrderRef = workOrderId != null ? "WO-" + workOrderId : "Work order";
+
+        long daysLate = 0;
+        if (workOrder.getScheduledDate() != null && workOrder.getScheduledDate().isBefore(currentDate)) {
+            daysLate = currentDate.toEpochDay() - workOrder.getScheduledDate().toEpochDay();
+        }
+
+        Long assignedTechId = workOrder.getAssignedTechId();
+        String assignedTechName = resolveTechnicianName(assignedTechId);
+
+        return new DashboardSlaWorkOrderItem(
+                workOrderId,
+                workOrderRef,
+                abbreviate(workOrder.getDescription(), 60),
+                workOrder.getClientName(),
+                workOrder.getScheduledDate(),
+                workOrder.getStatus(),
+                workOrder.getPriority(),
+                assignedTechId,
+                assignedTechName,
+                daysLate
+        );
+    }
+
+    private String abbreviate(String value, int maxLength) {
+        if (value == null || value.isBlank()) {
+            return "No description";
+        }
+        return value.length() <= maxLength ? value : value.substring(0, maxLength) + "...";
+    }
+
+    private String resolveTechnicianName(Long assignedTechId) {
+        if (assignedTechId == null) {
+            return null;
+        }
+
+        return techRepo.findById(assignedTechId)
+                .map(tech -> {
+                    String first = tech.getFirstName() != null ? tech.getFirstName().trim() : "";
+                    String last = tech.getLastName() != null ? tech.getLastName().trim() : "";
+                    String fullName = (first + " " + last).trim();
+                    return fullName.isBlank() ? null : fullName;
+                })
+                .orElse(null);
     }
 }

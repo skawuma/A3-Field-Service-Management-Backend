@@ -45,4 +45,9 @@ public class DashboardController {
     public ResponseEntity<DashboardAnalytics> getAnalytics() {
         return ResponseEntity.ok(service.getAnalytics());
     }
+    @GetMapping("/sla")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
+    public ResponseEntity<DashboardSlaSummary> getSlaSummary() {
+        return ResponseEntity.ok(service.getSlaSummary());
+    }
 }
