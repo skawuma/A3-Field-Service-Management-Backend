@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.dashboard;
 
+import com.a3solutions.fsm.auth.UserRepository;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import com.a3solutions.fsm.workorder.WorkOrderEventRepository;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
@@ -34,6 +35,9 @@ class DashboardServiceTest {
 
     @Mock
     private WorkOrderEventRepository workOrderEventRepository;
+
+    @Mock
+    private UserRepository userRepository;
 
     @InjectMocks
     private DashboardService dashboardService;
@@ -125,6 +129,24 @@ class DashboardServiceTest {
         assertEquals(2L, trendTotals.get(today));
     }
 
+    @Test
+    void getTechnicianWorkloadBuildsDashboardFriendlyRows() {
+        when(workOrderRepository.findTechnicianWorkloads(any(LocalDate.class), any(Collection.class))).thenReturn(List.of(
+                technicianWorkload(1L, "Deborah Katimbo", 6L, 2L, 4L, 1L, 3L),
+                technicianWorkload(2L, "Sam Okello", 3L, 1L, 2L, 0L, 1L)
+        ));
+
+        List<DashboardTechnicianWorkloadItem> workload = dashboardService.getTechnicianWorkload();
+
+        assertEquals(2, workload.size());
+        assertEquals("Deborah Katimbo", workload.getFirst().technicianName());
+        assertEquals(6L, workload.getFirst().totalAssignedWorkOrders());
+        assertEquals(2L, workload.getFirst().openAssignedWorkOrders());
+        assertEquals(4L, workload.getFirst().inProgressAssignedWorkOrders());
+        assertEquals(1L, workload.getFirst().dueTodayAssignedWorkOrders());
+        assertEquals(3L, workload.getFirst().overdueAssignedWorkOrders());
+    }
+
     private DashboardBucketProjection bucket(String key, long total) {
         return new DashboardBucketProjection() {
             @Override
@@ -149,6 +171,53 @@ class DashboardServiceTest {
             @Override
             public long getTotal() {
                 return total;
+            }
+        };
+    }
+
+    private DashboardTechnicianWorkloadProjection technicianWorkload(
+            Long technicianId,
+            String technicianName,
+            long totalAssignedWorkOrders,
+            long openAssignedWorkOrders,
+            long inProgressAssignedWorkOrders,
+            long dueTodayAssignedWorkOrders,
+            long overdueAssignedWorkOrders
+    ) {
+        return new DashboardTechnicianWorkloadProjection() {
+            @Override
+            public Long getTechnicianId() {
+                return technicianId;
+            }
+
+            @Override
+            public String getTechnicianName() {
+                return technicianName;
+            }
+
+            @Override
+            public long getTotalAssignedWorkOrders() {
+                return totalAssignedWorkOrders;
+            }
+
+            @Override
+            public long getOpenAssignedWorkOrders() {
+                return openAssignedWorkOrders;
+            }
+
+            @Override
+            public long getInProgressAssignedWorkOrders() {
+                return inProgressAssignedWorkOrders;
+            }
+
+            @Override
+            public long getDueTodayAssignedWorkOrders() {
+                return dueTodayAssignedWorkOrders;
+            }
+
+            @Override
+            public long getOverdueAssignedWorkOrders() {
+                return overdueAssignedWorkOrders;
             }
         };
     }

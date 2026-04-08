@@ -16,4 +16,6 @@ public interface TechnicianRepository extends JpaRepository<TechnicianEntity, Lo
 
 
     Optional<TechnicianEntity> findByUserId(Long userId);
+
+
 }

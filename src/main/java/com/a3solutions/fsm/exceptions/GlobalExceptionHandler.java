@@ -3,6 +3,8 @@ package com.a3solutions.fsm.exceptions;
 import jakarta.servlet.http.HttpServletRequest;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.security.access.AccessDeniedException;
+import org.springframework.security.authorization.AuthorizationDeniedException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.FieldError;
@@ -61,6 +63,11 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(BusinessRuleException.class)
     public ResponseEntity<Object> handleBusinessRule(BusinessRuleException ex, HttpServletRequest req) {
         return build(HttpStatus.CONFLICT, ex.getMessage(), req.getRequestURI());
+    }
+
+    @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
+    public ResponseEntity<Object> handleAccessDenied(Exception ex, HttpServletRequest req) {
+        return build(HttpStatus.FORBIDDEN, "Access denied", req.getRequestURI());
     }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)

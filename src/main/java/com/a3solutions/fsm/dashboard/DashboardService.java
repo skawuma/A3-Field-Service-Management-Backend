@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.dashboard;
 
+import com.a3solutions.fsm.auth.UserRepository;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
 import com.a3solutions.fsm.workorder.WorkOrderEventEntity;
@@ -8,6 +9,8 @@ import com.a3solutions.fsm.workorder.WorkOrderEventType;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
 import com.a3solutions.fsm.workorder.WorkOrderStatus;
 import org.springframework.data.domain.PageRequest;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
@@ -17,6 +20,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.stream.Collectors;
 
 /**
@@ -27,6 +31,8 @@ import java.util.stream.Collectors;
  */
 @Service
 public class DashboardService {
+
+
     private static final List<WorkOrderStatus> TERMINAL_STATUSES = List.of(
             WorkOrderStatus.COMPLETED,
             WorkOrderStatus.CANCELLED
@@ -45,7 +51,7 @@ public class DashboardService {
     private final TechnicianRepository techRepo;
     private final WorkOrderRepository woRepo;
     private final WorkOrderEventRepository workOrderEventRepository;
-
+    private final UserRepository userRepo;
     private static final int SLA_LIST_LIMIT = 5;
     private static final List<WorkOrderStatus> ACTIVE_SLA_STATUSES = List.of(
             WorkOrderStatus.OPEN,
@@ -56,11 +62,13 @@ public class DashboardService {
     public DashboardService(
             TechnicianRepository techRepo,
             WorkOrderRepository woRepo,
-            WorkOrderEventRepository workOrderEventRepository
+            WorkOrderEventRepository workOrderEventRepository,
+            UserRepository userRepo
     ) {
         this.techRepo = techRepo;
         this.woRepo = woRepo;
         this.workOrderEventRepository = workOrderEventRepository;
+        this.userRepo = userRepo;
     }
 
     public DashboardSummary getSummary() {
@@ -277,34 +285,59 @@ public class DashboardService {
         }
 
         return normalized;
+
     }
 
     public DashboardSlaSummary getSlaSummary() {
         ZoneId zone = ZoneId.systemDefault();
         LocalDate currentDate = LocalDate.now(zone);
 
+        if (hasRole("TECH")) {
+            Long technicianId = getCurrentTechnicianId();
+            return getTechnicianSlaSummary(technicianId, currentDate);
+        }
+
+        return getGlobalSlaSummary(currentDate);
+    }
+
+    public List<DashboardTechnicianWorkloadItem> getTechnicianWorkload() {
+        LocalDate currentDate = LocalDate.now(ZoneId.systemDefault());
+        List<String> terminalStatusNames = TERMINAL_STATUSES.stream()
+                .map(Enum::name)
+                .toList();
+
+        return woRepo.findTechnicianWorkloads(currentDate, terminalStatusNames)
+                .stream()
+                .map(this::toTechnicianWorkloadItem)
+                .toList();
+    }
+
+
+
+    private DashboardSlaSummary getGlobalSlaSummary(LocalDate currentDate) {
         long dueToday = woRepo.countByScheduledDateAndStatusNotIn(currentDate, TERMINAL_STATUSES);
         long overdue = woRepo.countByScheduledDateBeforeAndStatusNotIn(currentDate, TERMINAL_STATUSES);
 
-        List<DashboardSlaWorkOrderItem> overdueItems = woRepo
+        List<WorkOrderEntity> overdueWorkOrders = woRepo
                 .findByScheduledDateBeforeAndStatusInOrderByScheduledDateAscIdAsc(
                         currentDate,
                         ACTIVE_SLA_STATUSES,
                         PageRequest.of(0, SLA_LIST_LIMIT)
                 )
                 .stream()
-                .map(workOrder -> toSlaItem(workOrder, currentDate))
                 .toList();
 
-        List<DashboardSlaWorkOrderItem> dueTodayItems = woRepo
+        List<WorkOrderEntity> dueTodayWorkOrders = woRepo
                 .findByScheduledDateAndStatusInOrderByIdDesc(
                         currentDate,
                         ACTIVE_SLA_STATUSES,
                         PageRequest.of(0, SLA_LIST_LIMIT)
                 )
                 .stream()
-                .map(workOrder -> toSlaItem(workOrder, currentDate))
                 .toList();
+
+        List<DashboardSlaWorkOrderItem> overdueItems = toSlaItems(overdueWorkOrders, currentDate);
+        List<DashboardSlaWorkOrderItem> dueTodayItems = toSlaItems(dueTodayWorkOrders, currentDate);
 
         return new DashboardSlaSummary(
                 overdue,
@@ -314,9 +347,123 @@ public class DashboardService {
         );
     }
 
+    private DashboardSlaSummary getTechnicianSlaSummary(Long technicianId, LocalDate currentDate) {
+        long dueToday = woRepo.countByAssignedTechIdAndScheduledDateAndStatusNotIn(
+                technicianId,
+                currentDate,
+                TERMINAL_STATUSES
+        );
+
+        long overdue = woRepo.countByAssignedTechIdAndScheduledDateBeforeAndStatusNotIn(
+                technicianId,
+                currentDate,
+                TERMINAL_STATUSES
+        );
+
+        List<WorkOrderEntity> overdueWorkOrders = woRepo
+                .findByAssignedTechIdAndScheduledDateBeforeAndStatusInOrderByScheduledDateAscIdAsc(
+                        technicianId,
+                        currentDate,
+                        ACTIVE_SLA_STATUSES,
+                        PageRequest.of(0, SLA_LIST_LIMIT)
+                )
+                .stream()
+                .toList();
+
+        List<WorkOrderEntity> dueTodayWorkOrders = woRepo
+                .findByAssignedTechIdAndScheduledDateAndStatusInOrderByIdDesc(
+                        technicianId,
+                        currentDate,
+                        ACTIVE_SLA_STATUSES,
+                        PageRequest.of(0, SLA_LIST_LIMIT)
+                )
+                .stream()
+                .toList();
+
+        List<DashboardSlaWorkOrderItem> overdueItems = toSlaItems(overdueWorkOrders, currentDate);
+        List<DashboardSlaWorkOrderItem> dueTodayItems = toSlaItems(dueTodayWorkOrders, currentDate);
+
+        return new DashboardSlaSummary(
+                overdue,
+                dueToday,
+                overdueItems,
+                dueTodayItems
+        );
+    }
+
+    private DashboardTechnicianWorkloadItem toTechnicianWorkloadItem(
+            DashboardTechnicianWorkloadProjection projection
+    ) {
+        Long technicianId = projection.getTechnicianId();
+        String technicianName = projection.getTechnicianName();
+
+        if (technicianName == null || technicianName.isBlank()) {
+            technicianName = technicianId != null ? "Technician #" + technicianId : "Technician";
+        }
+
+        return new DashboardTechnicianWorkloadItem(
+                technicianId,
+                technicianName,
+                projection.getTotalAssignedWorkOrders(),
+                projection.getOpenAssignedWorkOrders(),
+                projection.getInProgressAssignedWorkOrders(),
+                projection.getDueTodayAssignedWorkOrders(),
+                projection.getOverdueAssignedWorkOrders()
+        );
+    }
+
+    private boolean hasRole(String role) {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        return authentication != null
+                && authentication.getAuthorities() != null
+                && authentication.getAuthorities().stream()
+                .anyMatch(a -> a.getAuthority().equals("ROLE_" + role));
+    }
+
+    private String getCurrentUserEmail() {
+        Authentication authentication = SecurityContextHolder.getContext().getAuthentication();
+
+        if (authentication == null || authentication.getName() == null) {
+            throw new IllegalStateException("No authenticated user found");
+        }
+
+        return authentication.getName();
+    }
+
+    private Long getCurrentTechnicianId() {
+        String email = getCurrentUserEmail();
+
+        Long userId = userRepo.findByEmail(email)
+                .orElseThrow(() -> new IllegalStateException("Authenticated user not found for email: " + email))
+                .getId();
+
+        return techRepo.findByUserId(userId)
+                .map(technician -> technician.getId())
+                .orElseThrow(() -> new IllegalStateException(
+                        "Authenticated technician user is not linked to a technician record"
+                ));
+    }
 
 
-    private DashboardSlaWorkOrderItem toSlaItem(WorkOrderEntity workOrder, LocalDate currentDate) {
+
+
+
+
+
+    private List<DashboardSlaWorkOrderItem> toSlaItems(List<WorkOrderEntity> workOrders, LocalDate currentDate) {
+        Map<Long, String> technicianNames = resolveTechnicianNames(workOrders);
+
+        return workOrders.stream()
+                .map(workOrder -> toSlaItem(workOrder, currentDate, technicianNames))
+                .toList();
+    }
+
+    private DashboardSlaWorkOrderItem toSlaItem(
+            WorkOrderEntity workOrder,
+            LocalDate currentDate,
+            Map<Long, String> technicianNames
+    ) {
         Long workOrderId = workOrder.getId();
         String workOrderRef = workOrderId != null ? "WO-" + workOrderId : "Work order";
 
@@ -326,7 +473,7 @@ public class DashboardService {
         }
 
         Long assignedTechId = workOrder.getAssignedTechId();
-        String assignedTechName = resolveTechnicianName(assignedTechId);
+        String assignedTechName = technicianNames.get(assignedTechId);
 
         return new DashboardSlaWorkOrderItem(
                 workOrderId,
@@ -349,18 +496,32 @@ public class DashboardService {
         return value.length() <= maxLength ? value : value.substring(0, maxLength) + "...";
     }
 
-    private String resolveTechnicianName(Long assignedTechId) {
-        if (assignedTechId == null) {
-            return null;
+    private Map<Long, String> resolveTechnicianNames(List<WorkOrderEntity> workOrders) {
+        List<Long> technicianIds = workOrders.stream()
+                .map(WorkOrderEntity::getAssignedTechId)
+                .filter(Objects::nonNull)
+                .distinct()
+                .toList();
+
+        if (technicianIds.isEmpty()) {
+            return Map.of();
         }
 
-        return techRepo.findById(assignedTechId)
-                .map(tech -> {
-                    String first = tech.getFirstName() != null ? tech.getFirstName().trim() : "";
-                    String last = tech.getLastName() != null ? tech.getLastName().trim() : "";
-                    String fullName = (first + " " + last).trim();
-                    return fullName.isBlank() ? null : fullName;
-                })
-                .orElse(null);
+        return techRepo.findAllById(technicianIds).stream()
+                .collect(Collectors.toMap(
+                        tech -> tech.getId(),
+                        tech -> {
+                            String fullName = tech.getFullName();
+                            if (fullName != null && !fullName.isBlank()) {
+                                return fullName;
+                            }
+
+                            if (tech.getEmail() != null && !tech.getEmail().isBlank()) {
+                                return tech.getEmail().trim();
+                            }
+
+                            return "Technician #" + tech.getId();
+                        }
+                ));
     }
 }

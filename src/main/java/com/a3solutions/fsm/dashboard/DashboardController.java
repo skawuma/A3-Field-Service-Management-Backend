@@ -46,8 +46,14 @@ public class DashboardController {
         return ResponseEntity.ok(service.getAnalytics());
     }
     @GetMapping("/sla")
-    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<DashboardSlaSummary> getSlaSummary() {
         return ResponseEntity.ok(service.getSlaSummary());
+    }
+
+    @GetMapping("/technician-workload")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
+    public ResponseEntity<List<DashboardTechnicianWorkloadItem>> getTechnicianWorkload() {
+        return ResponseEntity.ok(service.getTechnicianWorkload());
     }
 }
