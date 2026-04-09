@@ -16,6 +16,8 @@ public record DashboardSummary(
         long dueTodayWorkOrders,
         long overdueWorkOrders,
         long completedToday,
-        long highPriorityOpen
+        long highPriorityOpen,
+        long activeAssignedWorkOrders,
+        long assignedInProgressWorkOrders
 ) {
 }

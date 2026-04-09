@@ -1,22 +1,31 @@
 package com.a3solutions.fsm.dashboard;
 
+import com.a3solutions.fsm.auth.UserEntity;
 import com.a3solutions.fsm.auth.UserRepository;
+import com.a3solutions.fsm.security.Role;
+import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
+import com.a3solutions.fsm.workorder.WorkOrderEntity;
+import com.a3solutions.fsm.workorder.WorkOrderEventEntity;
+import com.a3solutions.fsm.workorder.WorkOrderEventType;
 import com.a3solutions.fsm.workorder.WorkOrderEventRepository;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
 import com.a3solutions.fsm.workorder.WorkOrderStatus;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.data.domain.Pageable;
+import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.Collection;
 import java.util.List;
 import java.util.Map;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -41,6 +50,11 @@ class DashboardServiceTest {
 
     @InjectMocks
     private DashboardService dashboardService;
+
+    @AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
 
     @Test
     void getSummaryIncludesSlaBucketsAndCompletionMetrics() {
@@ -67,6 +81,8 @@ class DashboardServiceTest {
                 eq(WorkOrderStatus.OPEN),
                 any(Collection.class)
         )).thenReturn(4L);
+        when(workOrderRepository.countByAssignedTechIdIsNotNullAndStatusNotIn(any(Collection.class))).thenReturn(17L);
+        when(workOrderRepository.countByAssignedTechIdIsNotNullAndStatus(WorkOrderStatus.IN_PROGRESS)).thenReturn(6L);
 
         DashboardSummary summary = dashboardService.getSummary();
 
@@ -80,6 +96,57 @@ class DashboardServiceTest {
         assertEquals(2L, summary.overdueWorkOrders());
         assertEquals(5L, summary.completedToday());
         assertEquals(4L, summary.highPriorityOpen());
+        assertEquals(17L, summary.activeAssignedWorkOrders());
+        assertEquals(6L, summary.assignedInProgressWorkOrders());
+    }
+
+    @Test
+    void getSummaryReturnsTechnicianPersonalCountsForTechDashboard() {
+        setAuthenticatedUser("debs@a3fsm.com", "TECH");
+
+        when(userRepository.findByEmail("debs@a3fsm.com")).thenReturn(
+                java.util.Optional.of(UserEntity.builder()
+                        .id(77L)
+                        .email("debs@a3fsm.com")
+                        .role(Role.TECH)
+                        .firstName("Deborah")
+                        .lastName("Katimbo")
+                        .password("secret")
+                        .build())
+        );
+        when(technicianRepository.findByUserId(77L)).thenReturn(
+                java.util.Optional.of(TechnicianEntity.builder()
+                        .id(5L)
+                        .userId(77L)
+                        .firstName("Deborah")
+                        .lastName("Katimbo")
+                        .email("debs@a3fsm.com")
+                        .build())
+        );
+        when(workOrderRepository.countByAssignedTechIdAndScheduledDateAndStatusNotIn(
+                eq(5L),
+                any(LocalDate.class),
+                any(Collection.class)
+        )).thenReturn(3L);
+        when(workOrderRepository.countByAssignedTechIdAndScheduledDateBeforeAndStatusNotIn(
+                eq(5L),
+                any(LocalDate.class),
+                any(Collection.class)
+        )).thenReturn(2L);
+        when(workOrderRepository.countByAssignedTechIdAndStatusNotIn(
+                eq(5L),
+                any(Collection.class)
+        )).thenReturn(6L);
+        when(workOrderRepository.countByAssignedTechIdAndStatus(5L, WorkOrderStatus.IN_PROGRESS)).thenReturn(4L);
+
+        DashboardSummary summary = dashboardService.getSummary();
+
+        assertEquals(3L, summary.dueTodayWorkOrders());
+        assertEquals(2L, summary.overdueWorkOrders());
+        assertEquals(6L, summary.activeAssignedWorkOrders());
+        assertEquals(4L, summary.assignedInProgressWorkOrders());
+        assertEquals(0L, summary.totalWorkOrders());
+        assertEquals(0L, summary.completedToday());
     }
 
     @Test
@@ -145,6 +212,81 @@ class DashboardServiceTest {
         assertEquals(4L, workload.getFirst().inProgressAssignedWorkOrders());
         assertEquals(1L, workload.getFirst().dueTodayAssignedWorkOrders());
         assertEquals(3L, workload.getFirst().overdueAssignedWorkOrders());
+    }
+
+    @Test
+    void getRecentActivityReturnsTechnicianPersonalActivity() {
+        setAuthenticatedUser("debs@a3fsm.com", "TECH");
+
+        when(userRepository.findByEmail("debs@a3fsm.com")).thenReturn(
+                java.util.Optional.of(UserEntity.builder()
+                        .id(77L)
+                        .email("debs@a3fsm.com")
+                        .role(Role.TECH)
+                        .firstName("Deborah")
+                        .lastName("Katimbo")
+                        .password("secret")
+                        .build())
+        );
+        when(technicianRepository.findByUserId(77L)).thenReturn(
+                java.util.Optional.of(TechnicianEntity.builder()
+                        .id(5L)
+                        .userId(77L)
+                        .firstName("Deborah")
+                        .lastName("Katimbo")
+                        .email("debs@a3fsm.com")
+                        .build())
+        );
+
+        WorkOrderEntity assignedToTech = WorkOrderEntity.builder()
+                .id(101L)
+                .assignedTechId(5L)
+                .status(WorkOrderStatus.IN_PROGRESS)
+                .build();
+        WorkOrderEntity notAssignedToTech = WorkOrderEntity.builder()
+                .id(202L)
+                .assignedTechId(9L)
+                .status(WorkOrderStatus.OPEN)
+                .build();
+
+        WorkOrderEventEntity ownAssignedEvent = event(assignedToTech, WorkOrderEventType.STARTED, "debs@a3fsm.com", "Started work");
+        WorkOrderEventEntity ownActorEvent = event(notAssignedToTech, WorkOrderEventType.COMPLETED, "debs@a3fsm.com", "Completed work");
+        WorkOrderEventEntity unrelatedEvent = event(notAssignedToTech, WorkOrderEventType.CREATED, "admin@a3fsm.com", "Created work");
+
+        when(workOrderEventRepository.findAllByOrderByCreatedAtDesc(any(Pageable.class))).thenReturn(List.of(
+                ownAssignedEvent,
+                ownActorEvent,
+                unrelatedEvent
+        ));
+
+        List<DashboardRecentActivityItem> activity = dashboardService.getRecentActivity(8);
+
+        assertEquals(2, activity.size());
+        assertEquals(List.of(101L, 202L), activity.stream().map(DashboardRecentActivityItem::workOrderId).toList());
+    }
+
+    private void setAuthenticatedUser(String email, String role) {
+        SecurityContextHolder.getContext().setAuthentication(
+                new UsernamePasswordAuthenticationToken(
+                        email,
+                        "n/a",
+                        List.of(new org.springframework.security.core.authority.SimpleGrantedAuthority("ROLE_" + role))
+                )
+        );
+    }
+
+    private WorkOrderEventEntity event(
+            WorkOrderEntity workOrder,
+            WorkOrderEventType eventType,
+            String actor,
+            String message
+    ) {
+        WorkOrderEventEntity event = new WorkOrderEventEntity();
+        event.setWorkOrder(workOrder);
+        event.setEventType(eventType);
+        event.setActor(actor);
+        event.setMessage(message);
+        return event;
     }
 
     private DashboardBucketProjection bucket(String key, long total) {

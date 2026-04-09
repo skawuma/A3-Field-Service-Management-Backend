@@ -72,14 +72,23 @@ public class DashboardService {
     }
 
     public DashboardSummary getSummary() {
+        ZoneId zone = ZoneId.systemDefault();
+        LocalDate currentDate = LocalDate.now(zone);
+
+        if (hasRole("TECH")) {
+            Long technicianId = getCurrentTechnicianId();
+            return getTechnicianSummary(technicianId, currentDate);
+        }
+
+        return getOperationalSummary(currentDate, zone);
+    }
+
+    private DashboardSummary getOperationalSummary(LocalDate currentDate, ZoneId zone) {
         long totalTechs = techRepo.count();
         long totalWO = woRepo.count();
         long open = woRepo.countByStatus(WorkOrderStatus.OPEN);
         long inProgress = woRepo.countByStatus(WorkOrderStatus.IN_PROGRESS);
         long unassigned = woRepo.countByAssignedTechIdIsNull();
-
-        ZoneId zone = ZoneId.systemDefault();
-        LocalDate currentDate = LocalDate.now(zone);
         long scheduledToday = woRepo.countByScheduledDate(currentDate);
         long dueToday = woRepo.countByScheduledDateAndStatusNotIn(currentDate, TERMINAL_STATUSES);
         long overdue = woRepo.countByScheduledDateBeforeAndStatusNotIn(currentDate, TERMINAL_STATUSES);
@@ -96,6 +105,8 @@ public class DashboardService {
                 WorkOrderStatus.OPEN,
                 List.of("HIGH", "CRITICAL")
         );
+        long activeAssigned = woRepo.countByAssignedTechIdIsNotNullAndStatusNotIn(TERMINAL_STATUSES);
+        long assignedInProgress = woRepo.countByAssignedTechIdIsNotNullAndStatus(WorkOrderStatus.IN_PROGRESS);
 
         return new DashboardSummary(
                 totalTechs,
@@ -107,7 +118,39 @@ public class DashboardService {
                 dueToday,
                 overdue,
                 completedToday,
-                highPriorityOpen
+                highPriorityOpen,
+                activeAssigned,
+                assignedInProgress
+        );
+    }
+
+    private DashboardSummary getTechnicianSummary(Long technicianId, LocalDate currentDate) {
+        long dueToday = woRepo.countByAssignedTechIdAndScheduledDateAndStatusNotIn(
+                technicianId,
+                currentDate,
+                TERMINAL_STATUSES
+        );
+        long overdue = woRepo.countByAssignedTechIdAndScheduledDateBeforeAndStatusNotIn(
+                technicianId,
+                currentDate,
+                TERMINAL_STATUSES
+        );
+        long activeAssigned = woRepo.countByAssignedTechIdAndStatusNotIn(technicianId, TERMINAL_STATUSES);
+        long assignedInProgress = woRepo.countByAssignedTechIdAndStatus(technicianId, WorkOrderStatus.IN_PROGRESS);
+
+        return new DashboardSummary(
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                0L,
+                dueToday,
+                overdue,
+                0L,
+                0L,
+                activeAssigned,
+                assignedInProgress
         );
     }
 
@@ -173,10 +216,22 @@ public class DashboardService {
 
     public List<DashboardRecentActivityItem> getRecentActivity(int limit) {
         int safeLimit = Math.max(1, Math.min(limit, 20));
-        int fetchSize = Math.max(safeLimit * 3, 20);
+        int fetchSize = Math.max(safeLimit * 5, 20);
+        List<WorkOrderEventEntity> events = workOrderEventRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, fetchSize));
 
-        return workOrderEventRepository.findAllByOrderByCreatedAtDesc(PageRequest.of(0, fetchSize))
-                .stream()
+        if (hasRole("TECH")) {
+            Long technicianId = getCurrentTechnicianId();
+            String actorEmail = getCurrentUserEmail();
+
+            return events.stream()
+                    .filter(event -> shouldDisplayOnDashboard(event.getEventType()))
+                    .filter(event -> belongsToTechnicianActivity(event, technicianId, actorEmail))
+                    .limit(safeLimit)
+                    .map(this::toRecentActivityItem)
+                    .toList();
+        }
+
+        return events.stream()
                 .filter(event -> shouldDisplayOnDashboard(event.getEventType()))
                 .limit(safeLimit)
                 .map(this::toRecentActivityItem)
@@ -247,6 +302,19 @@ public class DashboardService {
         }
 
         return "technician";
+    }
+
+    private boolean belongsToTechnicianActivity(WorkOrderEventEntity event, Long technicianId, String actorEmail) {
+        if (event == null) {
+            return false;
+        }
+
+        if (actorEmail != null && event.getActor() != null && event.getActor().equalsIgnoreCase(actorEmail)) {
+            return true;
+        }
+
+        WorkOrderEntity workOrder = event.getWorkOrder();
+        return workOrder != null && Objects.equals(workOrder.getAssignedTechId(), technicianId);
     }
 
     private String formatStatusLabel(WorkOrderStatus status) {

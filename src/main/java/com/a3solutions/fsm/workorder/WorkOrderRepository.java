@@ -29,6 +29,10 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long
     long countByScheduledDateBeforeAndStatusNotIn(LocalDate date, Collection<WorkOrderStatus> statuses);
     long countByStatusAndCompletedAtBetween(WorkOrderStatus status, Instant startInclusive, Instant endExclusive);
     long countByStatusAndPriorityIn(WorkOrderStatus status, Collection<String> priorities);
+    long countByAssignedTechIdIsNotNullAndStatusNotIn(Collection<WorkOrderStatus> statuses);
+    long countByAssignedTechIdIsNotNullAndStatus(WorkOrderStatus status);
+    long countByAssignedTechIdAndStatusNotIn(Long assignedTechId, Collection<WorkOrderStatus> statuses);
+    long countByAssignedTechIdAndStatus(Long assignedTechId, WorkOrderStatus status);
     @Query(value = """
             select status as bucketKey, count(*) as total
             from work_orders

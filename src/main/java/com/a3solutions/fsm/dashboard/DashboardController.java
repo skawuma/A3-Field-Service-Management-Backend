@@ -27,13 +27,13 @@ public class DashboardController {
 
 
     @GetMapping("/summary")
-    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<DashboardSummary> getSummary() {
         return ResponseEntity.ok(service.getSummary());
     }
 
     @GetMapping("/recent-activity")
-    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<List<DashboardRecentActivityItem>> getRecentActivity(
             @RequestParam(defaultValue = "8") int limit
     ) {
