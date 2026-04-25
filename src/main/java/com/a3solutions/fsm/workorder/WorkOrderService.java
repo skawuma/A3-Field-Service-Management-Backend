@@ -3,6 +3,7 @@ package com.a3solutions.fsm.workorder;
 import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.exceptions.BusinessRuleException;
 import com.a3solutions.fsm.exceptions.NotFoundException;
+import com.a3solutions.fsm.realtime.RealtimeEventPublisher;
 import com.a3solutions.fsm.security.Role;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
@@ -52,18 +53,22 @@ public class WorkOrderService {
     private final TechnicianRepository technicianRepo;
     private final WorkOrderEventService eventService;
     private final WorkOrderCompletionRepository workOrderCompletionRepository;
+    private final RealtimeEventPublisher realtimeEventPublisher;
 
     public WorkOrderService(
             WorkOrderRepository repo,
             TechnicianRepository technicianRepo,
             WorkOrderEventService eventService,
             StorageService storageService,
-            WorkOrderCompletionRepository workOrderCompletionRepository) {
+            WorkOrderCompletionRepository workOrderCompletionRepository,
+            RealtimeEventPublisher realtimeEventPublisher
+            ) {
         this.repo = repo;
         this.technicianRepo = technicianRepo;
         this.eventService = eventService;
         this.storageService = storageService;
         this.workOrderCompletionRepository = workOrderCompletionRepository;
+        this.realtimeEventPublisher = realtimeEventPublisher;
     }
 
     // =====================================================================
@@ -130,6 +135,7 @@ public class WorkOrderService {
     // =====================================================================
     // ASSIGN TECHNICIAN
     // =====================================================================
+
     @Transactional
     public WorkOrderDto assignTechnician(Long id, AssignTechnicianRequest req, String actor) {
 
@@ -156,7 +162,7 @@ public class WorkOrderService {
         var saved = repo.save(wo);
 
         // 4. Record assignment event
-        String technicianName = tech.getFullName()!= null ? tech.getFullName() : ("Tech#" + tech.getId());
+        String technicianName = tech.getFullName() != null ? tech.getFullName() : ("Tech#" + tech.getId());
 
         eventService.recordEvent(
                 saved,
@@ -179,9 +185,18 @@ public class WorkOrderService {
             );
         }
 
+        // Sprint 8 realtime event
+        realtimeEventPublisher.publishWorkOrderAssigned(
+                saved,
+                oldTechId,
+                oldStatus == null ? null : oldStatus.name()
+        );
+
         // 6. Return updated DTO
         return toDto(saved, technicianName);
     }
+
+
 
 
     // =====================================================================
@@ -349,6 +364,9 @@ public class WorkOrderService {
     }
 
 
+
+
+
     @Transactional
     public WorkOrderDto completeWorkOrder(Long id, CompleteWorkOrderRequest req, Long userId) {
 
@@ -396,8 +414,12 @@ public class WorkOrderService {
                 actor
         );
 
+        // Sprint 8 realtime event
+        realtimeEventPublisher.publishWorkOrderCompleted(saved);
+
         return toDto(saved);
     }
+
 
     @Transactional
     public WorkOrderDto startWorkOrder(Long id, Long userId) {
@@ -434,8 +456,15 @@ public class WorkOrderService {
         WorkOrderEntity saved = repo.save(wo);
         eventService.logStarted(saved, previousStatus);
 
+        realtimeEventPublisher.publishWorkOrderStarted(
+                saved,
+                previousStatus == null ? null : previousStatus.name()
+        );
+
         return toDto(saved);
     }
+
+
 
     @Transactional
     public WorkOrderDto returnWorkOrderToOpen(Long id, Long userId, String reason) {
@@ -495,67 +524,16 @@ public class WorkOrderService {
             );
         }
 
+        realtimeEventPublisher.publishWorkOrderReturnedToOpen(
+                saved,
+                previousTechId,
+                previousStatus == null ? null : previousStatus.name(),
+                reason
+        );
+
         return toDto(saved);
     }
 
-//    @Transactional
-//    public WorkOrderDto returnWorkOrderToOpen(Long id, Long userId) {
-//        TechnicianEntity technician = technicianRepo.findByUserId(userId)
-//                .orElseThrow(() -> new NotFoundException("Technician profile not found for this user."));
-//
-//        WorkOrderEntity wo = repo.findById(id)
-//                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
-//
-//        if (!Objects.equals(wo.getAssignedTechId(), technician.getId())) {
-//            throw new NotFoundException("TECH not allowed to release this work order.");
-//        }
-//
-//        if (wo.getStatus() == WorkOrderStatus.IN_PROGRESS) {
-//            throw new BusinessRuleException("Started work orders cannot be returned to OPEN from this screen.");
-//        }
-//
-//        if (wo.getStatus() == WorkOrderStatus.COMPLETED) {
-//            throw new BusinessRuleException("Completed work orders cannot be returned to OPEN.");
-//        }
-//
-//        if (wo.getStatus() == WorkOrderStatus.CANCELLED) {
-//            throw new BusinessRuleException("Cancelled work orders are already closed.");
-//        }
-//
-//        WorkOrderStatus previousStatus = wo.getStatus();
-//        Long previousTechId = wo.getAssignedTechId();
-//
-//        wo.setAssignedTechId(null);
-//        wo.setStatus(WorkOrderStatus.OPEN);
-//
-//        WorkOrderEntity saved = repo.save(wo);
-//        String actor = getCurrentActor();
-//        String technicianName = technician.getFullName() != null && !technician.getFullName().isBlank()
-//                ? technician.getFullName()
-//                : ("Tech#" + technician.getId());
-//
-//        eventService.recordEvent(
-//                saved,
-//                WorkOrderEventType.UNASSIGNED_TECHNICIAN,
-//                "Technician " + technicianName + " released this work order so it can be reassigned.",
-//                previousTechId == null ? null : previousTechId.toString(),
-//                null,
-//                actor
-//        );
-//
-//        if (previousStatus != WorkOrderStatus.OPEN) {
-//            eventService.recordEvent(
-//                    saved,
-//                    WorkOrderEventType.STATUS_CHANGED,
-//                    "Status changed to OPEN.",
-//                    previousStatus == null ? null : previousStatus.name(),
-//                    WorkOrderStatus.OPEN.name(),
-//                    actor
-//            );
-//        }
-//
-//        return toDto(saved);
-//    }
 
     private String saveSignatureFromDataUrl(String dataUrl, Long workOrderId, Long technicianId) {
         try {
@@ -654,6 +632,10 @@ public class WorkOrderService {
         completion.setCompletedByUserId(authenticatedUserId);
 
         WorkOrderCompletionEntity savedCompletion = workOrderCompletionRepository.save(completion);
+        realtimeEventPublisher.publishStructuredCompletionSubmitted(
+                workOrder,
+                savedCompletion.getFaTag()
+        );
 
         return mapToCompletionResponse(savedCompletion);
     }
@@ -709,60 +691,73 @@ public class WorkOrderService {
         return "Technician updated work notes.";
     }
 
-    @Transactional
-    public WorkOrderDto reopenWorkOrder(Long id, String reason) {
 
-        WorkOrderEntity wo = repo.findById(id)
-                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+@Transactional
+public WorkOrderDto reopenWorkOrder(Long id, String reason) {
 
-        if (wo.getStatus() != WorkOrderStatus.COMPLETED) {
-            throw new BusinessRuleException("Only COMPLETED work orders can be reopened.");
+    WorkOrderEntity wo = repo.findById(id)
+            .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+
+    if (wo.getStatus() != WorkOrderStatus.COMPLETED) {
+        throw new BusinessRuleException("Only COMPLETED work orders can be reopened.");
+    }
+
+    String previousSignatureUrl = wo.getSignatureUrl();
+    Long previousTechId = wo.getAssignedTechId();
+    wo.setStatus(WorkOrderStatus.OPEN);
+    wo.setCompletedAt(null);
+    wo.setCompletionNotes(null);
+    wo.setSignatureUrl(null);
+    wo.setAssignedTechId(null);
+
+    workOrderCompletionRepository.findByWorkOrderId(id)
+            .ifPresent(workOrderCompletionRepository::delete);
+
+    WorkOrderEntity saved = repo.save(wo);
+    String actor = getCurrentActor();
+
+    if (previousSignatureUrl != null && !previousSignatureUrl.isBlank()) {
+        try {
+            storageService.delete(previousSignatureUrl);
+        } catch (RuntimeException ex) {
+            log.warn("Failed to delete reopened work order signature file {}", previousSignatureUrl, ex);
         }
+    }
 
-        String previousSignatureUrl = wo.getSignatureUrl();
-        Long previousTechId = wo.getAssignedTechId();
-        wo.setStatus(WorkOrderStatus.OPEN);
-        wo.setCompletedAt(null);
-        wo.setCompletionNotes(null);
-        wo.setSignatureUrl(null);
-        wo.setAssignedTechId(null);
-
-        workOrderCompletionRepository.findByWorkOrderId(id)
-                .ifPresent(workOrderCompletionRepository::delete);
-
-        WorkOrderEntity saved = repo.save(wo);
-        String actor = getCurrentActor();
-
-        if (previousSignatureUrl != null && !previousSignatureUrl.isBlank()) {
-            try {
-                storageService.delete(previousSignatureUrl);
-            } catch (RuntimeException ex) {
-                log.warn("Failed to delete reopened work order signature file {}", previousSignatureUrl, ex);
-            }
-        }
-        if (previousTechId != null) {
-            eventService.recordEvent(
-                    saved,
-                    WorkOrderEventType.UNASSIGNED_TECHNICIAN,
-                    "Work order was reopened and unassigned from technician.",
-                    previousTechId.toString(),
-                    null,
-                    actor
-            );
-        }
-
-        eventService.logReopened(saved, reason);
-
+    if (previousTechId != null) {
         eventService.recordEvent(
                 saved,
-                WorkOrderEventType.STATUS_CHANGED,
-                "Status changed to OPEN.",
-                WorkOrderStatus.COMPLETED.name(),
-                WorkOrderStatus.OPEN.name(),
+                WorkOrderEventType.UNASSIGNED_TECHNICIAN,
+                "Work order was reopened and unassigned from technician.",
+                previousTechId.toString(),
+                null,
                 actor
         );
-
-        return toDto(saved);
     }
+
+    eventService.logReopened(saved, reason);
+
+    eventService.recordEvent(
+            saved,
+            WorkOrderEventType.STATUS_CHANGED,
+            "Status changed to OPEN.",
+            WorkOrderStatus.COMPLETED.name(),
+            WorkOrderStatus.OPEN.name(),
+            actor
+    );
+
+    realtimeEventPublisher.publishWorkOrderReopened(
+            saved,
+            previousTechId,
+            WorkOrderStatus.COMPLETED.name(),
+            previousSignatureUrl != null && !previousSignatureUrl.isBlank(),
+            reason != null && !reason.isBlank(),
+            reason
+    );
+
+    return toDto(saved);
+}
+
+
 
 }

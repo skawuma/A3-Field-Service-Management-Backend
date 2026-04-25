@@ -61,7 +61,9 @@ public class SecurityConfig {
                                 "/api/auth/**",
                                 "/api/auth/create-admin",
                                 "/swagger-ui/**",
-                                "/api-docs/**"
+                                "/api-docs/**",
+                                "/ws",
+                                "/ws/**"
                         ).permitAll()
 
                         .anyRequest().authenticated()
@@ -82,6 +84,7 @@ public class SecurityConfig {
         config.setAllowedOrigins(List.of(
                 "http://localhost:4200",
                 "http://127.0.0.1:4200",
+                "http://10.1.66.232:4200",
                 "http://samuels-macbook-pro.local:4200",
                 "http://Samuels-MacBook-Pro.local:4200",
                 "http://10.0.0.98:4200"
