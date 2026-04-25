@@ -34,3 +34,9 @@ springdoc:
 
 storage:
   local-root: uploads
+
+app:
+  bootstrap-demo-data: ${APP_BOOTSTRAP_DEMO_DATA:false}
+  realtime:
+    sla-monitor-delay-ms: ${APP_REALTIME_SLA_MONITOR_DELAY_MS:60000}
+    sla-monitor-initial-delay-ms: ${APP_REALTIME_SLA_MONITOR_INITIAL_DELAY_MS:15000}
