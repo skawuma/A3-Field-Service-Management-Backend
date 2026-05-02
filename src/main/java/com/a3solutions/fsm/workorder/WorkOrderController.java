@@ -5,6 +5,15 @@ import com.a3solutions.fsm.common.PageResponse;
 import com.a3solutions.fsm.security.JwtService;
 import com.a3solutions.fsm.security.Role;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRequest;
+import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionResponse;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.Parameter;
+import io.swagger.v3.oas.annotations.media.Content;
+import io.swagger.v3.oas.annotations.media.Schema;
+import io.swagger.v3.oas.annotations.responses.ApiResponse;
+import io.swagger.v3.oas.annotations.responses.ApiResponses;
+import io.swagger.v3.oas.annotations.security.SecurityRequirement;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -22,6 +31,11 @@ import org.springframework.web.bind.annotation.*;
 
 @RestController
 @RequestMapping("/api/workorders")
+@Tag(
+        name = "Work Orders",
+        description = "Work order lifecycle, technician execution, completion reporting, and recovery actions."
+)
+@SecurityRequirement(name = "bearerAuth")
 public class WorkOrderController {
 
     private final WorkOrderService service;
@@ -34,16 +48,25 @@ public class WorkOrderController {
     // =====================================================================
     // GET PAGE
     // =====================================================================
+    @Operation(
+            summary = "List work orders",
+            description = "Returns a paged work order list. TECH users are automatically scoped to their own assigned work orders."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Work orders returned", content = @Content(schema = @Schema(implementation = WorkOrderPageResponse.class))),
+            @ApiResponse(responseCode = "401", description = "Authentication required"),
+            @ApiResponse(responseCode = "403", description = "Caller does not have permission")
+    })
     @GetMapping
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<PageResponse<WorkOrderDto>> getPage(
-            @RequestParam(defaultValue = "0") int page,
-            @RequestParam(defaultValue = "10") int size,
-            @RequestParam(required = false) String search,
-            @RequestParam(required = false) String priority,
-            @RequestParam(required = false) String status,
-            @RequestParam(defaultValue = "id,desc") String sort,
-            @RequestParam(required = false) Long technicianId,
+            @Parameter(description = "Zero-based page index", example = "0") @RequestParam(defaultValue = "0") int page,
+            @Parameter(description = "Page size", example = "10") @RequestParam(defaultValue = "10") int size,
+            @Parameter(description = "Free-text search over customer, address, description, or status", example = "generator") @RequestParam(required = false) String search,
+            @Parameter(description = "Priority filter", example = "HIGH") @RequestParam(required = false) String priority,
+            @Parameter(description = "Status filter", example = "OPEN") @RequestParam(required = false) String status,
+            @Parameter(description = "Sort field and direction", example = "id,desc") @RequestParam(defaultValue = "id,desc") String sort,
+            @Parameter(description = "Technician filter. Ignored for TECH users because they are automatically scoped.", example = "3") @RequestParam(required = false) Long technicianId,
             Authentication auth
     ) {
 
@@ -83,11 +106,19 @@ public class WorkOrderController {
 //        return ResponseEntity.ok(dto);
 //    }
 
-
+    @Operation(
+            summary = "Get a single work order",
+            description = "Returns one work order. TECH users may only view work orders currently assigned to them."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Work order returned", content = @Content(schema = @Schema(implementation = WorkOrderDto.class))),
+            @ApiResponse(responseCode = "403", description = "TECH user is not assigned to this work order"),
+            @ApiResponse(responseCode = "404", description = "Work order not found")
+    })
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<?> getOne(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             Authentication auth
     ) {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
@@ -109,6 +140,15 @@ public class WorkOrderController {
     // =====================================================================
     // CREATE
     // =====================================================================
+    @Operation(
+            summary = "Create a work order",
+            description = "Creates a new work order. Intended for ADMIN and DISPATCH users."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Work order created", content = @Content(schema = @Schema(implementation = WorkOrderDto.class))),
+            @ApiResponse(responseCode = "400", description = "Request payload is invalid"),
+            @ApiResponse(responseCode = "403", description = "Caller does not have permission")
+    })
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
     public ResponseEntity<WorkOrderDto> create(@RequestBody WorkOrderCreateRequest req) {
@@ -118,10 +158,19 @@ public class WorkOrderController {
     // =====================================================================
     // ASSIGN TECHNICIAN
     // =====================================================================
+    @Operation(
+            summary = "Assign a technician",
+            description = "Assigns a technician to a work order. When the work order is OPEN or ASSIGNED, the status is normalized to ASSIGNED."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Technician assigned", content = @Content(schema = @Schema(implementation = WorkOrderDto.class))),
+            @ApiResponse(responseCode = "400", description = "Assignment request is invalid"),
+            @ApiResponse(responseCode = "404", description = "Work order or technician not found")
+    })
     @PostMapping("/{id}/assign")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
     public ResponseEntity<WorkOrderDto> assignTechnician(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             @RequestBody AssignTechnicianRequest request,
             HttpServletRequest httpReq
     ) {
@@ -146,10 +195,19 @@ public class WorkOrderController {
     // =====================================================================
     // UPDATE WORK ORDER — TECH LIMITED
     // =====================================================================
+    @Operation(
+            summary = "Update a work order",
+            description = "ADMIN and DISPATCH can perform full updates. TECH users may only update work orders assigned to them, using the technician-safe update path."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Work order updated", content = @Content(schema = @Schema(implementation = WorkOrderDto.class))),
+            @ApiResponse(responseCode = "403", description = "TECH user is not allowed to update this work order"),
+            @ApiResponse(responseCode = "404", description = "Work order not found")
+    })
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<?> update(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             @RequestBody WorkOrderCreateRequest req,
             Authentication auth
     ) {
@@ -168,10 +226,20 @@ public class WorkOrderController {
         return ResponseEntity.ok(service.updateAdmin(id, req));
     }
 
+    @Operation(
+            summary = "Start a work order",
+            description = "TECH only. Transitions a work order from OPEN or ASSIGNED to IN_PROGRESS. The caller must be the assigned technician."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Work order started", content = @Content(schema = @Schema(implementation = WorkOrderDto.class))),
+            @ApiResponse(responseCode = "400", description = "Illegal workflow transition"),
+            @ApiResponse(responseCode = "403", description = "TECH user is not assigned to this work order"),
+            @ApiResponse(responseCode = "404", description = "Work order not found")
+    })
     @PostMapping("/{id}/start")
     @PreAuthorize("hasRole('TECH')")
     public ResponseEntity<?> startWorkOrder(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             Authentication auth
     ) {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
@@ -184,10 +252,20 @@ public class WorkOrderController {
         return ResponseEntity.ok(service.startWorkOrder(id, user.getId()));
     }
 
+    @Operation(
+            summary = "Return a work order to OPEN",
+            description = "TECH only. Releases an assigned work order back to OPEN so dispatch/admin can reassign it. Not allowed once work is IN_PROGRESS or COMPLETED."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Work order returned to OPEN", content = @Content(schema = @Schema(implementation = WorkOrderDto.class))),
+            @ApiResponse(responseCode = "400", description = "Illegal workflow transition"),
+            @ApiResponse(responseCode = "403", description = "TECH user is not assigned to this work order"),
+            @ApiResponse(responseCode = "404", description = "Work order not found")
+    })
     @PostMapping("/{id}/return-to-open")
     @PreAuthorize("hasRole('TECH')")
     public ResponseEntity<?> returnWorkOrderToOpen(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             @RequestBody(required = false) ReturnToOpenRequest request,
             Authentication auth
     ) {
@@ -202,10 +280,20 @@ public class WorkOrderController {
         return ResponseEntity.ok(service.returnWorkOrderToOpen(id, user.getId(), reason));
     }
 
+    @Operation(
+            summary = "Complete a work order",
+            description = "TECH only. Completes an IN_PROGRESS work order. Requires the assigned technician, a signature, and an existing structured completion report."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Work order completed", content = @Content(schema = @Schema(implementation = WorkOrderDto.class))),
+            @ApiResponse(responseCode = "400", description = "Completion request violates workflow rules"),
+            @ApiResponse(responseCode = "403", description = "TECH user is not assigned to this work order"),
+            @ApiResponse(responseCode = "404", description = "Work order not found")
+    })
     @PostMapping("/{id}/complete")
     @PreAuthorize("hasRole('TECH')")
     public ResponseEntity<?> completeWorkOrder(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             @RequestBody CompleteWorkOrderRequest req,
             Authentication auth
     ) {
@@ -221,10 +309,20 @@ public class WorkOrderController {
         );
     }
 
+    @Operation(
+            summary = "Submit a structured completion report",
+            description = "TECH only. Stores the field-service report required before final sign-off. Only the assigned technician may submit it."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Completion report saved", content = @Content(schema = @Schema(implementation = WorkOrderCompletionResponse.class))),
+            @ApiResponse(responseCode = "400", description = "Report request is invalid or duplicate"),
+            @ApiResponse(responseCode = "403", description = "TECH user is not assigned to this work order"),
+            @ApiResponse(responseCode = "404", description = "Work order not found")
+    })
     @PostMapping("/{id}/completion-report")
     @PreAuthorize("hasRole('TECH')")
     public ResponseEntity<?> submitCompletionReport(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             @RequestBody WorkOrderCompletionRequest request,
             Authentication auth
     ) {
@@ -240,10 +338,19 @@ public class WorkOrderController {
         );
     }
 
+    @Operation(
+            summary = "Get a structured completion report",
+            description = "Returns the structured field report for a work order. TECH users may only view reports for their assigned work orders."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Completion report returned", content = @Content(schema = @Schema(implementation = WorkOrderCompletionResponse.class))),
+            @ApiResponse(responseCode = "403", description = "TECH user is not assigned to this work order"),
+            @ApiResponse(responseCode = "404", description = "Completion report or work order not found")
+    })
     @GetMapping("/{id}/completion-report")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<?> getCompletionReport(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             Authentication auth
     ) {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
@@ -259,10 +366,19 @@ public class WorkOrderController {
         );
     }
 
+    @Operation(
+            summary = "Get a work-order signature",
+            description = "Returns the stored signature asset for a completed work order. TECH users may only access signatures for their assigned work orders."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Signature returned"),
+            @ApiResponse(responseCode = "403", description = "TECH user is not assigned to this work order"),
+            @ApiResponse(responseCode = "404", description = "Signature or work order not found")
+    })
     @GetMapping("/{id}/signature")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
     public ResponseEntity<?> getSignature(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             Authentication auth
     ) {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
@@ -274,10 +390,20 @@ public class WorkOrderController {
 
         return service.getSignature(id);
     }
+
+    @Operation(
+            summary = "Reopen a completed work order",
+            description = "ADMIN or DISPATCH only. Reopens a COMPLETED work order back to OPEN, clearing completion artifacts so it can be re-dispatched."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Work order reopened", content = @Content(schema = @Schema(implementation = WorkOrderDto.class))),
+            @ApiResponse(responseCode = "400", description = "Only COMPLETED work orders may be reopened"),
+            @ApiResponse(responseCode = "404", description = "Work order not found")
+    })
     @PostMapping("/{id}/reopen")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
     public ResponseEntity<WorkOrderDto> reopenWorkOrder(
-            @PathVariable Long id,
+            @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             @RequestBody(required = false) ReopenWorkOrderRequest request
     ) {
         String reason = request != null ? request.reason() : null;
