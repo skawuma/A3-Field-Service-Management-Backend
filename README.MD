@@ -279,7 +279,8 @@ Typical local API base:
 
 ### Docker-Aware Notes
 
-- the root `docker-compose.yml` wires this service to PostgreSQL and the Angular frontend
+- use the root `docker-compose.yml` as the single container entry point for the full platform
+- the backend no longer keeps a separate backend-only compose file, which avoids config drift
 - uploads are mounted so files persist outside the container
 - demo bootstrap support exists for container-first development
 - a local database import helper is available when you want Docker to use existing local data
