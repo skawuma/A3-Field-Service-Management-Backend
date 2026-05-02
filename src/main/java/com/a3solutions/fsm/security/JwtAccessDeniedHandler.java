@@ -1,15 +1,16 @@
 package com.a3solutions.fsm.security;
 
+import com.a3solutions.fsm.exceptions.ApiErrorResponses;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.web.access.AccessDeniedHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * @author samuelkawuma
@@ -29,14 +30,15 @@ public class JwtAccessDeniedHandler implements AccessDeniedHandler {
         response.setStatus(HttpServletResponse.SC_FORBIDDEN);
         response.setContentType("application/json");
 
-        Map<String, Object> body = Map.of(
-                "status", 403,
-                "error", "FORBIDDEN",
-                "message", accessDeniedException.getMessage(),
-                "path", request.getRequestURI()
+        mapper.writeValue(
+                response.getOutputStream(),
+                ApiErrorResponses.of(
+                        HttpStatus.FORBIDDEN,
+                        "FORBIDDEN",
+                        accessDeniedException.getMessage(),
+                        request.getRequestURI()
+                )
         );
-
-        mapper.writeValue(response.getOutputStream(), body);
 
     }
 }

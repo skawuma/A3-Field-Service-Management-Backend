@@ -14,8 +14,7 @@ import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.multipart.MaxUploadSizeExceededException;
 import org.springframework.web.multipart.MultipartException;
 
-import java.time.Instant;
-import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.Map;
 
 /**
@@ -30,22 +29,26 @@ public class GlobalExceptionHandler {
 
 
     @ExceptionHandler(MaxUploadSizeExceededException.class)
-    public ResponseEntity<?> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex) {
+    public ResponseEntity<ApiErrorResponse> handleMaxUploadSizeExceeded(MaxUploadSizeExceededException ex,
+                                                                        HttpServletRequest req) {
         return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE)
-                .body(Map.of(
-                        "status", 413,
-                        "error", "PAYLOAD_TOO_LARGE",
-                        "message", "Uploaded file exceeds the maximum allowed size."
+                .body(ApiErrorResponses.of(
+                        HttpStatus.PAYLOAD_TOO_LARGE,
+                        "PAYLOAD_TOO_LARGE",
+                        "Uploaded file exceeds the maximum allowed size.",
+                        req.getRequestURI()
                 ));
     }
 
     @ExceptionHandler(MultipartException.class)
-    public ResponseEntity<?> handleMultipartException(MultipartException ex) {
+    public ResponseEntity<ApiErrorResponse> handleMultipartException(MultipartException ex,
+                                                                     HttpServletRequest req) {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
-                .body(Map.of(
-                        "status", 400,
-                        "error", "MULTIPART_ERROR",
-                        "message", "Upload failed or was interrupted."
+                .body(ApiErrorResponses.of(
+                        HttpStatus.BAD_REQUEST,
+                        "MULTIPART_ERROR",
+                        "Upload failed or was interrupted.",
+                        req.getRequestURI()
                 ));
     }
 
@@ -73,15 +76,20 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(MethodArgumentNotValidException.class)
     public ResponseEntity<Object> handleValidation(MethodArgumentNotValidException ex,
                                                    HttpServletRequest req) {
-        Map<String, String> errors = new HashMap<>();
+        Map<String, String> errors = new LinkedHashMap<>();
         for (var err : ex.getBindingResult().getAllErrors()) {
             String field = ((FieldError) err).getField();
             String msg = err.getDefaultMessage();
             errors.put(field, msg);
         }
-        Map<String, Object> body = baseBody(HttpStatus.BAD_REQUEST, req.getRequestURI());
-        body.put("errors", errors);
-        return ResponseEntity.badRequest().body(body);
+        return ResponseEntity.badRequest().body(
+                ApiErrorResponses.validation(
+                        HttpStatus.BAD_REQUEST,
+                        "Request validation failed.",
+                        req.getRequestURI(),
+                        errors
+                )
+        );
     }
 
     @ExceptionHandler(Exception.class)
@@ -91,25 +99,21 @@ public class GlobalExceptionHandler {
     }
 
     private ResponseEntity<Object> build(HttpStatus status, String message, String path) {
-        Map<String, Object> body = baseBody(status, path);
-        body.put("message", message);
-        return ResponseEntity.status(status).body(body);
-    }
-
-    private Map<String, Object> baseBody(HttpStatus status, String path) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", Instant.now().toString());
-        body.put("status", status.value());
-        body.put("error", status.getReasonPhrase());
-        body.put("path", path);
-        return body;
+        return ResponseEntity.status(status).body(
+                ApiErrorResponses.of(status, message, path)
+        );
     }
 
 
     @ExceptionHandler(IllegalStateException.class)
-    public ResponseEntity<?> handleIllegalState(IllegalStateException ex) {
+    public ResponseEntity<ApiErrorResponse> handleIllegalState(IllegalStateException ex,
+                                                               HttpServletRequest req) {
         return ResponseEntity.status(HttpStatus.CONFLICT)
-                .body(Map.of("error", ex.getMessage()));
+                .body(ApiErrorResponses.of(
+                        HttpStatus.CONFLICT,
+                        ex.getMessage(),
+                        req.getRequestURI()
+                ));
     }
 
 }

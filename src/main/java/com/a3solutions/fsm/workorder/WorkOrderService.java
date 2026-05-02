@@ -570,7 +570,7 @@ public class WorkOrderService {
                 .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
 
         if (wo.getSignatureUrl() == null || wo.getSignatureUrl().isBlank()) {
-            return ResponseEntity.notFound().build();
+            throw new NotFoundException("Signature not found for work order: " + id);
         }
 
         Resource resource = storageService.loadAsResource(wo.getSignatureUrl());

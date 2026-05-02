@@ -15,7 +15,9 @@ import io.swagger.v3.oas.annotations.responses.ApiResponses;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.servlet.http.HttpServletRequest;
+import jakarta.validation.Valid;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
@@ -117,7 +119,7 @@ public class WorkOrderController {
     })
     @GetMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
-    public ResponseEntity<?> getOne(
+    public ResponseEntity<WorkOrderDto> getOne(
             @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             Authentication auth
     ) {
@@ -127,8 +129,7 @@ public class WorkOrderController {
         if (role == Role.TECH) {
             boolean allowed = service.canTechAccessWorkOrder(id, user.getId());
             if (!allowed) {
-                return ResponseEntity.status(403)
-                        .body("Not authorized to view this work order.");
+                throw new AccessDeniedException("Not authorized to view this work order.");
             }
         }
 
@@ -151,7 +152,7 @@ public class WorkOrderController {
     })
     @PostMapping
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH')")
-    public ResponseEntity<WorkOrderDto> create(@RequestBody WorkOrderCreateRequest req) {
+    public ResponseEntity<WorkOrderDto> create(@Valid @RequestBody WorkOrderCreateRequest req) {
         return ResponseEntity.ok(service.create(req));
     }
 
@@ -206,9 +207,9 @@ public class WorkOrderController {
     })
     @PutMapping("/{id}")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
-    public ResponseEntity<?> update(
+    public ResponseEntity<WorkOrderDto> update(
             @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
-            @RequestBody WorkOrderCreateRequest req,
+            @Valid @RequestBody WorkOrderCreateRequest req,
             Authentication auth
     ) {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
@@ -217,7 +218,7 @@ public class WorkOrderController {
         if (role == Role.TECH) {
 
             if (!service.canTechAccessWorkOrder(id, user.getId())) {
-                return ResponseEntity.status(403).body("TECH can only update assigned work orders.");
+                throw new AccessDeniedException("TECH can only update assigned work orders.");
             }
 
             return ResponseEntity.ok(service.updateTechByUser(id, req, user.getId()));
@@ -238,15 +239,14 @@ public class WorkOrderController {
     })
     @PostMapping("/{id}/start")
     @PreAuthorize("hasRole('TECH')")
-    public ResponseEntity<?> startWorkOrder(
+    public ResponseEntity<WorkOrderDto> startWorkOrder(
             @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             Authentication auth
     ) {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
 
         if (!service.canTechAccessWorkOrder(id, user.getId())) {
-            return ResponseEntity.status(403)
-                    .body("TECH can only start assigned work orders.");
+            throw new AccessDeniedException("TECH can only start assigned work orders.");
         }
 
         return ResponseEntity.ok(service.startWorkOrder(id, user.getId()));
@@ -264,7 +264,7 @@ public class WorkOrderController {
     })
     @PostMapping("/{id}/return-to-open")
     @PreAuthorize("hasRole('TECH')")
-    public ResponseEntity<?> returnWorkOrderToOpen(
+    public ResponseEntity<WorkOrderDto> returnWorkOrderToOpen(
             @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             @RequestBody(required = false) ReturnToOpenRequest request,
             Authentication auth
@@ -272,8 +272,7 @@ public class WorkOrderController {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
 
         if (!service.canTechAccessWorkOrder(id, user.getId())) {
-            return ResponseEntity.status(403)
-                    .body("TECH can only release assigned work orders.");
+            throw new AccessDeniedException("TECH can only release assigned work orders.");
         }
 
         String reason = request != null ? request.reason() : null;
@@ -292,7 +291,7 @@ public class WorkOrderController {
     })
     @PostMapping("/{id}/complete")
     @PreAuthorize("hasRole('TECH')")
-    public ResponseEntity<?> completeWorkOrder(
+    public ResponseEntity<WorkOrderDto> completeWorkOrder(
             @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             @RequestBody CompleteWorkOrderRequest req,
             Authentication auth
@@ -300,8 +299,7 @@ public class WorkOrderController {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
 
         if (!service.canTechAccessWorkOrder(id, user.getId())) {
-            return ResponseEntity.status(403)
-                    .body("TECH can only complete assigned work orders.");
+            throw new AccessDeniedException("TECH can only complete assigned work orders.");
         }
 
         return ResponseEntity.ok(
@@ -321,16 +319,15 @@ public class WorkOrderController {
     })
     @PostMapping("/{id}/completion-report")
     @PreAuthorize("hasRole('TECH')")
-    public ResponseEntity<?> submitCompletionReport(
+    public ResponseEntity<WorkOrderCompletionResponse> submitCompletionReport(
             @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
-            @RequestBody WorkOrderCompletionRequest request,
+            @Valid @RequestBody WorkOrderCompletionRequest request,
             Authentication auth
     ) {
         UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
 
         if (!service.canTechAccessWorkOrder(id, user.getId())) {
-            return ResponseEntity.status(403)
-                    .body("TECH can only submit reports for assigned work orders.");
+            throw new AccessDeniedException("TECH can only submit reports for assigned work orders.");
         }
 
         return ResponseEntity.ok(
@@ -349,7 +346,7 @@ public class WorkOrderController {
     })
     @GetMapping("/{id}/completion-report")
     @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
-    public ResponseEntity<?> getCompletionReport(
+    public ResponseEntity<WorkOrderCompletionResponse> getCompletionReport(
             @Parameter(description = "Work order identifier", example = "42") @PathVariable Long id,
             Authentication auth
     ) {
@@ -357,8 +354,7 @@ public class WorkOrderController {
         Role role = user.getRole();
 
         if (role == Role.TECH && !service.canTechAccessWorkOrder(id, user.getId())) {
-            return ResponseEntity.status(403)
-                    .body("TECH can only view reports for assigned work orders.");
+            throw new AccessDeniedException("TECH can only view reports for assigned work orders.");
         }
 
         return ResponseEntity.ok(
@@ -385,7 +381,7 @@ public class WorkOrderController {
         Role role = user.getRole();
 
         if (role == Role.TECH && !service.canTechAccessWorkOrder(id, user.getId())) {
-            return ResponseEntity.status(403).body("TECH can only view signature for assigned work orders!!");
+            throw new AccessDeniedException("TECH can only view signature for assigned work orders.");
         }
 
         return service.getSignature(id);

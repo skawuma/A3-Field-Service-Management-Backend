@@ -1,15 +1,16 @@
 package com.a3solutions.fsm.security;
 
+import com.a3solutions.fsm.exceptions.ApiErrorResponses;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
+import org.springframework.http.HttpStatus;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
 
 import java.io.IOException;
-import java.util.Map;
 
 /**
  * @author samuelkawuma
@@ -30,14 +31,15 @@ public class JwtAuthenticationEntryPoint implements AuthenticationEntryPoint {
         response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
         response.setContentType("application/json");
 
-        Map<String, Object> body = Map.of(
-                "status", 401,
-                "error", "UNAUTHORIZED",
-                "message", authException.getMessage(),
-                "path", request.getRequestURI()
+        mapper.writeValue(
+                response.getOutputStream(),
+                ApiErrorResponses.of(
+                        HttpStatus.UNAUTHORIZED,
+                        "UNAUTHORIZED",
+                        authException.getMessage(),
+                        request.getRequestURI()
+                )
         );
-
-        mapper.writeValue(response.getOutputStream(), body);
 
     }
 }
