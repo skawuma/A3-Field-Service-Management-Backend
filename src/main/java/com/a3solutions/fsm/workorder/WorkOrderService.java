@@ -128,6 +128,7 @@ public class WorkOrderService {
 
         WorkOrderEntity saved = repo.save(entity);
         eventService.logCreated(saved, getCurrentActor());
+        realtimeEventPublisher.publishWorkOrderCreated(saved);
 
         return toDto(saved);
     }

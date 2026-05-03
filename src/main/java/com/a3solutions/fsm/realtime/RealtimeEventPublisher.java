@@ -83,6 +83,27 @@ public class RealtimeEventPublisher {
         );
     }
 
+    public void publishWorkOrderCreated(WorkOrderEntity workOrder) {
+        Map<String, Object> metadata = createWorkOrderMetadata(workOrder);
+        metadata.put("eventKey", "created");
+
+        String activityDescription = formatWorkOrderRef(workOrder.getId()) + " created for "
+                + defaultText(workOrder.getClientName(), "customer");
+        metadata.put("activityTitle", "Work order created");
+        metadata.put("activityDescription", activityDescription);
+
+        publishDashboardEvent(
+                RealtimeEventMessage.of(
+                        RealtimeEventType.WORK_ORDER_CREATED,
+                        activityDescription,
+                        workOrder.getId(),
+                        workOrder.getAssignedTechId(),
+                        workOrder.getStatus() != null ? workOrder.getStatus().name() : null,
+                        metadata
+                )
+        );
+    }
+
     public void publishWorkOrderCompleted(WorkOrderEntity workOrder) {
         Map<String, Object> metadata = createWorkOrderMetadata(workOrder);
         metadata.put("eventKey", "completion");
