@@ -2,6 +2,7 @@ package com.a3solutions.fsm.dashboard;
 
 import com.a3solutions.fsm.auth.UserEntity;
 import com.a3solutions.fsm.auth.UserRepository;
+import com.a3solutions.fsm.realtime.RealtimeEventPublisher;
 import com.a3solutions.fsm.security.Role;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
@@ -47,6 +48,9 @@ class DashboardServiceTest {
 
     @Mock
     private UserRepository userRepository;
+
+    @Mock
+    private RealtimeEventPublisher realtimeEventPublisher;
 
     @InjectMocks
     private DashboardService dashboardService;

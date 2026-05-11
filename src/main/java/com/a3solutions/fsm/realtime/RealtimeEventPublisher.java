@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.realtime;
 
+import com.a3solutions.fsm.auth.UserRepository;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
@@ -10,8 +11,12 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
+import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 /**
  * @author samuelkawuma
  * @package com.a3solutions.fsm.realtime
@@ -34,16 +39,21 @@ public class RealtimeEventPublisher {
 
     public static final String DASHBOARD_TOPIC = "/topic/dashboard";
     public static final String ALERTS_TOPIC = "/topic/alerts";
+    public static final String USER_NOTIFICATIONS_QUEUE = "/queue/notifications";
 
     private final SimpMessagingTemplate messagingTemplate;
     private final TechnicianRepository technicianRepository;
+    private final UserRepository userRepository;
+    private final Set<Long> publishedOverdueWorkOrderIds = ConcurrentHashMap.newKeySet();
 
     public RealtimeEventPublisher(
             SimpMessagingTemplate messagingTemplate,
-            TechnicianRepository technicianRepository
+            TechnicianRepository technicianRepository,
+            UserRepository userRepository
     ) {
         this.messagingTemplate = messagingTemplate;
         this.technicianRepository = technicianRepository;
+        this.userRepository = userRepository;
     }
 
     public void publishDashboardEvent(RealtimeEventMessage message) {
@@ -52,6 +62,37 @@ public class RealtimeEventPublisher {
 
     public void publishAlertEvent(RealtimeEventMessage message) {
         publishAfterCommit(ALERTS_TOPIC, message);
+    }
+
+    public void publishNewSlaBreaches(List<WorkOrderEntity> overdueWorkOrders, LocalDate currentDate) {
+        publishNewSlaBreaches(overdueWorkOrders, currentDate, false);
+    }
+
+    public void publishNewSlaBreaches(
+            List<WorkOrderEntity> overdueWorkOrders,
+            LocalDate currentDate,
+            boolean fullOverdueSnapshot
+    ) {
+        if (fullOverdueSnapshot) {
+            Set<Long> currentOverdueIds = overdueWorkOrders.stream()
+                    .map(WorkOrderEntity::getId)
+                    .collect(java.util.stream.Collectors.toSet());
+
+            publishedOverdueWorkOrderIds.retainAll(currentOverdueIds);
+        }
+
+        for (WorkOrderEntity workOrder : overdueWorkOrders) {
+            if (workOrder.getId() == null || workOrder.getScheduledDate() == null) {
+                continue;
+            }
+
+            if (!publishedOverdueWorkOrderIds.add(workOrder.getId())) {
+                continue;
+            }
+
+            long overdueDays = ChronoUnit.DAYS.between(workOrder.getScheduledDate(), currentDate);
+            publishSlaBreached(workOrder, overdueDays);
+        }
     }
 
     public void publishWorkOrderAssigned(
@@ -81,6 +122,8 @@ public class RealtimeEventPublisher {
                         metadata
                 )
         );
+
+        publishAssignedTechnicianNotification(workOrder, metadata);
     }
 
     public void publishWorkOrderCreated(WorkOrderEntity workOrder) {
@@ -271,6 +314,58 @@ public class RealtimeEventPublisher {
         }
 
         messagingTemplate.convertAndSend(destination, message);
+    }
+
+    private void publishToUserAfterCommit(String username, String destination, RealtimeEventMessage message) {
+        if (TransactionSynchronizationManager.isSynchronizationActive()
+                && TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    messagingTemplate.convertAndSendToUser(username, destination, message);
+                }
+            });
+            return;
+        }
+
+        messagingTemplate.convertAndSendToUser(username, destination, message);
+    }
+
+    private void publishAssignedTechnicianNotification(
+            WorkOrderEntity workOrder,
+            Map<String, Object> workOrderMetadata
+    ) {
+        if (workOrder.getAssignedTechId() == null) {
+            return;
+        }
+
+        technicianRepository.findById(workOrder.getAssignedTechId())
+                .flatMap(technician -> technician.getUserId() != null
+                        ? userRepository.findById(technician.getUserId())
+                        : java.util.Optional.empty())
+                .ifPresent(user -> {
+                    Map<String, Object> metadata = new LinkedHashMap<>(workOrderMetadata);
+                    metadata.put("eventKey", "technician_assignment_notification");
+                    metadata.put("notificationTitle", "New Work Order Assigned");
+
+                    String notificationMessage = "New Work Order Assigned: "
+                            + formatWorkOrderRef(workOrder.getId()) + " "
+                            + defaultText(workOrder.getClientName(), "customer");
+                    metadata.put("notificationMessage", notificationMessage);
+
+                    publishToUserAfterCommit(
+                            user.getEmail(),
+                            USER_NOTIFICATIONS_QUEUE,
+                            RealtimeEventMessage.of(
+                                    RealtimeEventType.WORK_ORDER_ASSIGNED,
+                                    notificationMessage,
+                                    workOrder.getId(),
+                                    workOrder.getAssignedTechId(),
+                                    workOrder.getStatus() != null ? workOrder.getStatus().name() : null,
+                                    metadata
+                            )
+                    );
+                });
     }
 
     private Map<String, Object> createWorkOrderMetadata(WorkOrderEntity workOrder) {

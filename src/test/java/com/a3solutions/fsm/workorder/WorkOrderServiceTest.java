@@ -1,6 +1,7 @@
 package com.a3solutions.fsm.workorder;
 
 import com.a3solutions.fsm.exceptions.BusinessRuleException;
+import com.a3solutions.fsm.realtime.RealtimeEventPublisher;
 import com.a3solutions.fsm.storage.StorageService;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
@@ -45,6 +46,9 @@ class WorkOrderServiceTest {
 
     @Mock
     private WorkOrderCompletionRepository workOrderCompletionRepository;
+
+    @Mock
+    private RealtimeEventPublisher realtimeEventPublisher;
 
     @InjectMocks
     private WorkOrderService workOrderService;

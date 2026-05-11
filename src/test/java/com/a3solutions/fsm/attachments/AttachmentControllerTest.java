@@ -14,7 +14,6 @@ import org.springframework.http.ResponseEntity;
 import org.springframework.mock.web.MockMultipartFile;
 import org.springframework.security.core.Authentication;
 
-import java.util.Map;
 import java.util.List;
 import java.util.Optional;
 
@@ -104,12 +103,12 @@ class AttachmentControllerTest {
         );
 
         ResponseEntity<?> response = controller.upload(34L, file, null);
-        Map<?, ?> body = (Map<?, ?>) response.getBody();
+        AttachmentResponse body = (AttachmentResponse) response.getBody();
 
         assertEquals(200, response.getStatusCode().value());
-        assertEquals(99L, body.get("id"));
-        assertEquals("/files/evidence.txt", body.get("url"));
-        assertEquals("text/plain", body.get("contentType"));
+        assertEquals(99L, body.id());
+        assertEquals("/files/evidence.txt", body.url());
+        assertEquals("text/plain", body.contentType());
         verify(storageService).store(file);
         verify(attachmentRepository).save(any(AttachmentEntity.class));
         verify(workOrderEventService).logAttachmentAdded(openWorkOrder, "evidence.txt", "SYSTEM");
@@ -142,9 +141,9 @@ class AttachmentControllerTest {
 
         ResponseEntity<?> response = controller.list(34L, mock(Authentication.class));
         List<?> body = (List<?>) response.getBody();
-        Map<?, ?> first = (Map<?, ?>) body.get(0);
+        AttachmentResponse first = (AttachmentResponse) body.get(0);
 
         assertEquals(200, response.getStatusCode().value());
-        assertEquals("image/jpeg", first.get("contentType"));
+        assertEquals("image/jpeg", first.contentType());
     }
 }

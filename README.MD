@@ -219,6 +219,74 @@ flowchart LR
     DS --> WL[Technician Workload DTO]
 ```
 
+## Sprint 8 Realtime Layer
+
+Sprint 8 adds a realtime event layer on top of the existing modular monolith.
+
+The backend now supports:
+
+- Spring WebSocket/STOMP over `/ws`
+- dashboard broadcasts on `/topic/dashboard`
+- operational alerts on `/topic/alerts`
+- technician-specific notifications on `/user/queue/notifications`
+- transaction-safe event publishing after database commits
+- enriched event metadata for UI updates without a refresh
+
+```mermaid
+flowchart LR
+    WS[WorkOrderService] --> PUB[RealtimeEventPublisher]
+    DS[DashboardService] --> PUB
+    SLA[SlaRealtimeMonitor] --> PUB
+
+    PUB --> DTOPIC[/topic/dashboard/]
+    PUB --> ATOPIC[/topic/alerts/]
+    PUB --> UQUEUE[/user/queue/notifications/]
+
+    DTOPIC --> DASH[Dashboard and work order screens]
+    ATOPIC --> ALERTS[SLA alert toasts]
+    UQUEUE --> TECH[Assigned technician toast]
+```
+
+### Realtime Workflow Events
+
+The realtime publisher emits events for:
+
+- work order created
+- technician assigned
+- work order started
+- completion report submitted
+- work order completed
+- work order reopened
+- work order returned to open
+- SLA breached
+
+Each event carries enough metadata for the frontend to update visible rows, detail pages, dashboard cards, recent activity, workload pressure, and notification text without polling.
+
+### SLA Scanner
+
+SLA intelligence has two entry points:
+
+- dashboard SLA reads can publish newly discovered overdue work orders
+- `SlaRealtimeMonitor` scans overdue active work orders on a schedule
+
+Duplicate alert prevention is centralized in `RealtimeEventPublisher` with an in-memory set of already published overdue work order IDs. The scheduled scanner sends a full overdue snapshot so resolved jobs can leave the de-duplication set.
+
+```mermaid
+sequenceDiagram
+    participant Scheduler as SlaRealtimeMonitor
+    participant Repo as WorkOrderRepository
+    participant Pub as RealtimeEventPublisher
+    participant Broker as STOMP Broker
+    participant UI as Angular Clients
+
+    Scheduler->>Repo: Find active work orders past scheduled date
+    Repo-->>Scheduler: Overdue work orders
+    Scheduler->>Pub: publishNewSlaBreaches(..., full snapshot)
+    Pub->>Pub: Skip already published overdue IDs
+    Pub->>Broker: /topic/dashboard and /topic/alerts
+    Broker-->>UI: SLA card refresh and alert toast
+```
+
 ## How The Root Visuals Map To Backend Responsibilities
 
 The visual diagrams in the root README connect to this backend in three simple ways:
@@ -308,13 +376,13 @@ This backend is designed around a few practical principles:
 
 ## Near-Term Evolution
 
-As the platform moves further into Sprint 8 and beyond, the backend is well positioned for:
+As the platform moves beyond Sprint 8, the backend is well positioned for:
 
-- real-time dashboard updates through WebSockets
-- richer event-driven notifications
-- technician-specific recent activity feeds
+- Kafka-backed event publishing behind the current `RealtimeEventPublisher` contract
+- richer persisted notification and alert history
+- technician-specific recent activity feeds backed by durable subscriptions
 - deeper workload balancing and assignment intelligence
-- future Kafka-based integration if scale and decoupling needs grow
+- future microservice extraction around auth, work orders, SLA, dashboard, and notifications
 
 ## Related Documentation
 

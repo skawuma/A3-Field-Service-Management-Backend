@@ -1,6 +1,7 @@
 package com.a3solutions.fsm.dashboard;
 
 import com.a3solutions.fsm.auth.UserRepository;
+import com.a3solutions.fsm.realtime.RealtimeEventPublisher;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
 import com.a3solutions.fsm.workorder.WorkOrderEventEntity;
@@ -52,6 +53,7 @@ public class DashboardService {
     private final WorkOrderRepository woRepo;
     private final WorkOrderEventRepository workOrderEventRepository;
     private final UserRepository userRepo;
+    private final RealtimeEventPublisher realtimeEventPublisher;
     private static final int SLA_LIST_LIMIT = 5;
     private static final List<WorkOrderStatus> ACTIVE_SLA_STATUSES = List.of(
             WorkOrderStatus.OPEN,
@@ -63,12 +65,14 @@ public class DashboardService {
             TechnicianRepository techRepo,
             WorkOrderRepository woRepo,
             WorkOrderEventRepository workOrderEventRepository,
-            UserRepository userRepo
+            UserRepository userRepo,
+            RealtimeEventPublisher realtimeEventPublisher
     ) {
         this.techRepo = techRepo;
         this.woRepo = woRepo;
         this.workOrderEventRepository = workOrderEventRepository;
         this.userRepo = userRepo;
+        this.realtimeEventPublisher = realtimeEventPublisher;
     }
 
     public DashboardSummary getSummary() {
@@ -406,6 +410,7 @@ public class DashboardService {
 
         List<DashboardSlaWorkOrderItem> overdueItems = toSlaItems(overdueWorkOrders, currentDate);
         List<DashboardSlaWorkOrderItem> dueTodayItems = toSlaItems(dueTodayWorkOrders, currentDate);
+        realtimeEventPublisher.publishNewSlaBreaches(overdueWorkOrders, currentDate);
 
         return new DashboardSlaSummary(
                 overdue,
@@ -450,6 +455,7 @@ public class DashboardService {
 
         List<DashboardSlaWorkOrderItem> overdueItems = toSlaItems(overdueWorkOrders, currentDate);
         List<DashboardSlaWorkOrderItem> dueTodayItems = toSlaItems(dueTodayWorkOrders, currentDate);
+        realtimeEventPublisher.publishNewSlaBreaches(overdueWorkOrders, currentDate);
 
         return new DashboardSlaSummary(
                 overdue,
@@ -592,4 +598,5 @@ public class DashboardService {
                         }
                 ));
     }
+
 }
