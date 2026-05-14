@@ -1,6 +1,7 @@
 package com.a3solutions.fsm.realtime;
 
 import com.a3solutions.fsm.auth.UserRepository;
+import com.a3solutions.fsm.observability.FsmOperationalMetrics;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
@@ -44,16 +45,19 @@ public class RealtimeEventPublisher {
     private final SimpMessagingTemplate messagingTemplate;
     private final TechnicianRepository technicianRepository;
     private final UserRepository userRepository;
+    private final FsmOperationalMetrics metrics;
     private final Set<Long> publishedOverdueWorkOrderIds = ConcurrentHashMap.newKeySet();
 
     public RealtimeEventPublisher(
             SimpMessagingTemplate messagingTemplate,
             TechnicianRepository technicianRepository,
-            UserRepository userRepository
+            UserRepository userRepository,
+            FsmOperationalMetrics metrics
     ) {
         this.messagingTemplate = messagingTemplate;
         this.technicianRepository = technicianRepository;
         this.userRepository = userRepository;
+        this.metrics = metrics;
     }
 
     public void publishDashboardEvent(RealtimeEventMessage message) {
@@ -91,6 +95,7 @@ public class RealtimeEventPublisher {
             }
 
             long overdueDays = ChronoUnit.DAYS.between(workOrder.getScheduledDate(), currentDate);
+            metrics.recordSlaBreachPublished();
             publishSlaBreached(workOrder, overdueDays);
         }
     }
@@ -308,12 +313,14 @@ public class RealtimeEventPublisher {
                 @Override
                 public void afterCommit() {
                     messagingTemplate.convertAndSend(destination, message);
+                    metrics.recordRealtimeEventPublished(destination);
                 }
             });
             return;
         }
 
         messagingTemplate.convertAndSend(destination, message);
+        metrics.recordRealtimeEventPublished(destination);
     }
 
     private void publishToUserAfterCommit(String username, String destination, RealtimeEventMessage message) {
@@ -323,12 +330,14 @@ public class RealtimeEventPublisher {
                 @Override
                 public void afterCommit() {
                     messagingTemplate.convertAndSendToUser(username, destination, message);
+                    metrics.recordRealtimeEventPublished(destination);
                 }
             });
             return;
         }
 
         messagingTemplate.convertAndSendToUser(username, destination, message);
+        metrics.recordRealtimeEventPublished(destination);
     }
 
     private void publishAssignedTechnicianNotification(

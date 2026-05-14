@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.security;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpMethod;
@@ -14,6 +15,7 @@ import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
+import java.util.Arrays;
 import java.util.List;
 
 /**
@@ -29,6 +31,9 @@ public class SecurityConfig {
     private final AuthenticationProvider authProvider;
     private final JwtAuthenticationEntryPoint authenticationEntryPoint;
     private final JwtAccessDeniedHandler accessDeniedHandler;
+
+    @Value("${app.cors.allowed-origins}")
+    private String allowedOrigins;
 
     public SecurityConfig(
             JwtAuthFilter jwtAuthFilter,
@@ -62,6 +67,9 @@ public class SecurityConfig {
                                 "/api/auth/create-admin",
                                 "/swagger-ui/**",
                                 "/api-docs/**",
+                                "/actuator/health",
+                                "/actuator/health/**",
+                                 "/actuator/prometheus",
                                 "/ws",
                                 "/ws/**"
                         ).permitAll()
@@ -75,25 +83,49 @@ public class SecurityConfig {
         return http.build();
     }
 
-    @Bean
-    public CorsFilter corsFilter() {
-        UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 
-        CorsConfiguration config = new CorsConfiguration();
-        config.setAllowCredentials(true);
-        config.setAllowedOrigins(List.of(
-                "http://localhost:4200",
-                "http://127.0.0.1:4200",
-                "http://10.1.66.232:4200",
-                "http://samuels-macbook-pro.local:4200",
-                "http://Samuels-MacBook-Pro.local:4200",
-                "http://10.0.0.98:4200"
-        ));
-        config.addAllowedHeader("*");
-        config.addAllowedMethod("*");
+@Bean
+public CorsFilter corsFilter() {
+    UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
 
-        source.registerCorsConfiguration("/**", config);
-        return new CorsFilter(source);
-    }
+    CorsConfiguration config = new CorsConfiguration();
+    config.setAllowCredentials(true);
+
+    config.setAllowedOrigins(
+            Arrays.stream(allowedOrigins.split(","))
+                    .map(String::trim)
+                    .filter(origin -> !origin.isBlank())
+                    .toList()
+    );
+
+    config.addAllowedHeader("*");
+    config.addAllowedMethod("*");
+
+    source.registerCorsConfiguration("/**", config);
+    return new CorsFilter(source);
+}
+
+
+
+//     @Bean
+//     public CorsFilter corsFilter() {
+//         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
+
+//         CorsConfiguration config = new CorsConfiguration();
+//         config.setAllowCredentials(true);
+//         config.setAllowedOrigins(List.of(
+//                 "http://localhost:4200",
+//                 "http://127.0.0.1:4200",
+//                 "http://10.1.66.232:4200",
+//                 "http://samuels-macbook-pro.local:4200",
+//                 "http://Samuels-MacBook-Pro.local:4200",
+//                 "http://10.0.0.98:4200"
+//         ));
+//         config.addAllowedHeader("*");
+//         config.addAllowedMethod("*");
+
+//         source.registerCorsConfiguration("/**", config);
+//         return new CorsFilter(source);
+//     }
 
 }

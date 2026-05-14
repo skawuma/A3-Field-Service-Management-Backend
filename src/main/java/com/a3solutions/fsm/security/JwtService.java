@@ -8,7 +8,12 @@ import io.jsonwebtoken.security.Keys;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.core.userdetails.UserDetails;
 import org.springframework.stereotype.Service;
+import org.springframework.util.StringUtils;
 
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.security.Key;
 import java.util.Date;
 import java.util.Map;
@@ -23,12 +28,40 @@ public class JwtService {
 
     public JwtService(
             @Value("${jwt.secret}") String secret,
+            @Value("${jwt.secret-file:}") String secretFile,
             @Value("${jwt.expiration}") long accessExpiration,
             @Value("${jwt.refresh-expiration}") long refreshExpiration
     ) {
-        this.key = Keys.hmacShaKeyFor(secret.getBytes());
+        String resolvedSecret = resolveSecret(secret, secretFile);
+        this.key = Keys.hmacShaKeyFor(resolvedSecret.getBytes(StandardCharsets.UTF_8));
         this.accessExpiration = accessExpiration;
         this.refreshExpiration = refreshExpiration;
+    }
+
+    private String resolveSecret(String secret, String secretFile) {
+        String trimmedSecret = secret == null ? "" : secret.trim();
+        if (StringUtils.hasText(trimmedSecret)) {
+            return validateSecret(trimmedSecret);
+        }
+
+        if (StringUtils.hasText(secretFile)) {
+            try {
+                String fileSecret = Files.readString(Path.of(secretFile.trim()), StandardCharsets.UTF_8).trim();
+                return validateSecret(fileSecret);
+            } catch (IOException ex) {
+                throw new IllegalStateException("Unable to read JWT secret file.", ex);
+            }
+        }
+
+        throw new IllegalStateException("JWT secret must be provided via JWT_SECRET or JWT_SECRET_FILE.");
+    }
+
+    private String validateSecret(String secret) {
+        if (secret.getBytes(StandardCharsets.UTF_8).length < 32) {
+            throw new IllegalStateException("JWT secret must be at least 32 bytes for HS256 signing.");
+        }
+
+        return secret;
     }
 
     // ======================================================

@@ -23,7 +23,9 @@ import java.util.List;
 public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long>, JpaSpecificationExecutor<WorkOrderEntity> {
 
     long countByStatus(WorkOrderStatus status);
+    long countByStatusNotIn(Collection<WorkOrderStatus> statuses);
     long countByAssignedTechIdIsNull();
+    long countByAssignedTechIdIsNullAndStatusNotIn(Collection<WorkOrderStatus> statuses);
     long countByScheduledDate(LocalDate date);
     long countByScheduledDateAndStatusNotIn(LocalDate date, Collection<WorkOrderStatus> statuses);
     long countByScheduledDateBeforeAndStatusNotIn(LocalDate date, Collection<WorkOrderStatus> statuses);

@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.realtime;
 
+import com.a3solutions.fsm.observability.FsmOperationalMetrics;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
 import com.a3solutions.fsm.workorder.WorkOrderStatus;
@@ -33,13 +34,16 @@ public class SlaRealtimeMonitor {
 
     private final WorkOrderRepository workOrderRepository;
     private final RealtimeEventPublisher realtimeEventPublisher;
+    private final FsmOperationalMetrics metrics;
 
     public SlaRealtimeMonitor(
             WorkOrderRepository workOrderRepository,
-            RealtimeEventPublisher realtimeEventPublisher
+            RealtimeEventPublisher realtimeEventPublisher,
+            FsmOperationalMetrics metrics
     ) {
         this.workOrderRepository = workOrderRepository;
         this.realtimeEventPublisher = realtimeEventPublisher;
+        this.metrics = metrics;
     }
 
     @Scheduled(
@@ -56,6 +60,7 @@ public class SlaRealtimeMonitor {
                         Pageable.unpaged()
                 );
 
+        metrics.recordSlaMonitorRun(overdueWorkOrders.size());
         realtimeEventPublisher.publishNewSlaBreaches(overdueWorkOrders, currentDate, true);
     }
 }
