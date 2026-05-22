@@ -1,4 +1,3 @@
-
 FROM maven:3.9.8-eclipse-temurin-21 AS build
 WORKDIR /app
 
@@ -19,7 +18,7 @@ RUN apt-get update \
     && mkdir -p /app/uploads \
     && chown -R app:app /app
 
-COPY --from=build /app/target/a3-fsm-backend-0.0.1-SNAPSHOT.jar app.jar
+COPY --from=build /app/target/*.jar app.jar
 RUN chown app:app app.jar
 
 USER app
