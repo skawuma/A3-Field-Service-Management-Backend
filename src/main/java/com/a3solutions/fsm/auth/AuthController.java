@@ -24,7 +24,7 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 @Tag(
         name = "Authentication",
-        description = "Public endpoints for account registration, login, refresh-token exchange, and local admin bootstrap."
+        description = "Authentication endpoints for login, refresh-token exchange, and tightly controlled development bootstrap flows."
 )
 @SecurityRequirements
 public class AuthController {
@@ -36,11 +36,12 @@ public class AuthController {
 
     @Operation(
             summary = "Bootstrap a default admin account",
-            description = "Creates the local default admin user `admin@a3fsm.com` with password `admin123`. Intended for development/bootstrap use."
+            description = "Creates a bootstrap admin account using configured bootstrap credentials. This endpoint is intended for development/bootstrap use only and should remain disabled outside explicitly allowed environments."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "Admin account created", content = @Content(schema = @Schema(implementation = String.class))),
-            @ApiResponse(responseCode = "400", description = "Admin account could not be created")
+            @ApiResponse(responseCode = "400", description = "Admin account could not be created"),
+            @ApiResponse(responseCode = "404", description = "Admin bootstrap is disabled")
     })
     @PostMapping("/create-admin")
     public ResponseEntity<String> createAdmin() {
@@ -49,11 +50,12 @@ public class AuthController {
 
     @Operation(
             summary = "Register a new user",
-            description = "Creates a new user account and immediately returns access and refresh tokens."
+            description = "Creates a new self-registered technician account and immediately returns access and refresh tokens. This endpoint is disabled by default for production hardening and rejects elevated roles."
     )
     @ApiResponses({
             @ApiResponse(responseCode = "200", description = "User registered successfully", content = @Content(schema = @Schema(implementation = AuthResponse.class))),
-            @ApiResponse(responseCode = "400", description = "Registration request is invalid or email already exists")
+            @ApiResponse(responseCode = "400", description = "Registration request is invalid, email already exists, or the requested role is not allowed"),
+            @ApiResponse(responseCode = "404", description = "Self-registration is disabled")
     })
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {

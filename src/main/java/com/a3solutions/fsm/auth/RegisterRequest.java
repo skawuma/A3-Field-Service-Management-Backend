@@ -4,7 +4,6 @@ import com.a3solutions.fsm.security.Role;
 import io.swagger.v3.oas.annotations.media.Schema;
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.NotBlank;
-import jakarta.validation.constraints.NotNull;
 
 /**
  * @author samuelkawuma
@@ -22,7 +21,7 @@ public record RegisterRequest(
         @Email @NotBlank String email,
         @Schema(description = "User password.", example = "debs123")
         @NotBlank String password,
-        @Schema(description = "Role assigned to the new user.", example = "TECH")
-        @NotNull Role role
+        @Schema(description = "Optional role hint. Self-registration always creates a technician account and rejects elevated roles.", example = "TECH")
+        Role role
 ) {
 }

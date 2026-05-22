@@ -11,3 +11,11 @@ logging:
     root: INFO
     com.a3solutions: INFO
     org.springframework.security: WARN
+
+app:
+  auth:
+    allow-self-registration: false
+    allow-admin-bootstrap: false
+    bootstrap-admin:
+      email: ""
+      password: ""

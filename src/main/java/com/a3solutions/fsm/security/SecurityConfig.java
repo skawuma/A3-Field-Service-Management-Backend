@@ -16,6 +16,7 @@ import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
 import org.springframework.web.filter.CorsFilter;
 
 import java.util.Arrays;
+import java.util.ArrayList;
 import java.util.List;
 
 /**
@@ -35,6 +36,12 @@ public class SecurityConfig {
     @Value("${app.cors.allowed-origins}")
     private String allowedOrigins;
 
+    @Value("${app.auth.allow-self-registration:false}")
+    private boolean selfRegistrationEnabled;
+
+    @Value("${app.auth.allow-admin-bootstrap:false}")
+    private boolean adminBootstrapEnabled;
+
     public SecurityConfig(
             JwtAuthFilter jwtAuthFilter,
             AuthenticationProvider authProvider,
@@ -49,6 +56,25 @@ public class SecurityConfig {
 
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+        List<String> publicEndpoints = new ArrayList<>(List.of(
+                "/api/auth/login",
+                "/api/auth/refresh",
+                "/swagger-ui/**",
+                "/api-docs/**",
+                "/actuator/health",
+                "/actuator/health/**",
+                "/actuator/prometheus",
+                "/ws",
+                "/ws/**"
+        ));
+
+        if (selfRegistrationEnabled) {
+            publicEndpoints.add("/api/auth/register");
+        }
+
+        if (adminBootstrapEnabled) {
+            publicEndpoints.add("/api/auth/create-admin");
+        }
 
         http
                 .csrf(csrf -> csrf.disable())
@@ -62,23 +88,12 @@ public class SecurityConfig {
                 )
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
-                        .requestMatchers(
-                                "/api/auth/**",
-                                "/api/auth/create-admin",
-                                "/swagger-ui/**",
-                                "/api-docs/**",
-                                "/actuator/health",
-                                "/actuator/health/**",
-                                 "/actuator/prometheus",
-                                "/ws",
-                                "/ws/**"
-                        ).permitAll()
+                        .requestMatchers(publicEndpoints.toArray(String[]::new)).permitAll()
 
                         .anyRequest().authenticated()
                 )
-                        .authenticationProvider(authProvider)
-                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class)
-                .httpBasic(Customizer.withDefaults());
+                .authenticationProvider(authProvider)
+                .addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();
     }
@@ -104,28 +119,4 @@ public CorsFilter corsFilter() {
     source.registerCorsConfiguration("/**", config);
     return new CorsFilter(source);
 }
-
-
-
-//     @Bean
-//     public CorsFilter corsFilter() {
-//         UrlBasedCorsConfigurationSource source = new UrlBasedCorsConfigurationSource();
-
-//         CorsConfiguration config = new CorsConfiguration();
-//         config.setAllowCredentials(true);
-//         config.setAllowedOrigins(List.of(
-//                 "http://localhost:4200",
-//                 "http://127.0.0.1:4200",
-//                 "http://10.1.66.232:4200",
-//                 "http://samuels-macbook-pro.local:4200",
-//                 "http://Samuels-MacBook-Pro.local:4200",
-//                 "http://10.0.0.98:4200"
-//         ));
-//         config.addAllowedHeader("*");
-//         config.addAllowedMethod("*");
-
-//         source.registerCorsConfiguration("/**", config);
-//         return new CorsFilter(source);
-//     }
-
 }

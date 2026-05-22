@@ -8,3 +8,9 @@ spring:
 
 app:
   bootstrap-demo-data: true
+  auth:
+    allow-self-registration: false
+    allow-admin-bootstrap: true
+    bootstrap-admin:
+      email: admin@a3fsm.com
+      password: admin123

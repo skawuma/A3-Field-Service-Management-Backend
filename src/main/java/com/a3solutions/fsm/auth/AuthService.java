@@ -1,10 +1,12 @@
 package com.a3solutions.fsm.auth;
 
 import com.a3solutions.fsm.exceptions.BadRequestException;
+import com.a3solutions.fsm.exceptions.NotFoundException;
 import com.a3solutions.fsm.security.JwtService;
 import com.a3solutions.fsm.security.Role;
 import jakarta.transaction.Transactional;
 
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -24,19 +26,39 @@ public class AuthService {
     private final PasswordEncoder passwordEncoder;
     private final JwtService jwtService;
     private final AuthenticationManager authManager;
+    private final boolean selfRegistrationEnabled;
+    private final boolean adminBootstrapEnabled;
+    private final String bootstrapAdminEmail;
+    private final String bootstrapAdminPassword;
 
     public AuthService(UserRepository userRepo,
                        PasswordEncoder passwordEncoder,
                        JwtService jwtService,
-                       AuthenticationManager authManager) {
+                       AuthenticationManager authManager,
+                       @Value("${app.auth.allow-self-registration:false}") boolean selfRegistrationEnabled,
+                       @Value("${app.auth.allow-admin-bootstrap:false}") boolean adminBootstrapEnabled,
+                       @Value("${app.auth.bootstrap-admin.email:}") String bootstrapAdminEmail,
+                       @Value("${app.auth.bootstrap-admin.password:}") String bootstrapAdminPassword) {
         this.userRepo = userRepo;
         this.passwordEncoder = passwordEncoder;
         this.jwtService = jwtService;
         this.authManager = authManager;
+        this.selfRegistrationEnabled = selfRegistrationEnabled;
+        this.adminBootstrapEnabled = adminBootstrapEnabled;
+        this.bootstrapAdminEmail = bootstrapAdminEmail;
+        this.bootstrapAdminPassword = bootstrapAdminPassword;
     }
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
+        if (!selfRegistrationEnabled) {
+            throw new NotFoundException("Self-service registration is not enabled.");
+        }
+
+        if (request.role() != null && request.role() != Role.TECH) {
+            throw new BadRequestException("Self-service registration can only create technician accounts.");
+        }
+
         if (userRepo.existsByEmail(request.email())) {
             throw new BadRequestException("Email already in use");
         }
@@ -46,13 +68,11 @@ public class AuthService {
                 .lastName(request.lastName())
                 .email(request.email())
                 .password(passwordEncoder.encode(request.password()))
-                .role(request.role() == null ? Role.TECH : request.role())
+                .role(Role.TECH)
                 .active(true)
                 .build();
 
         userRepo.save(user);
-
-        var userDetails = new UserDetailsImpl(user);
         var accessToken = jwtService.generateAccessToken(user);
         var refreshToken = jwtService.generateRefreshToken(user);// later: different expiry
 
@@ -60,12 +80,25 @@ public class AuthService {
     }
 
     public ResponseEntity<String> createAdmin() {
-        var hashed = passwordEncoder.encode("admin123");
+        if (!adminBootstrapEnabled) {
+            throw new NotFoundException("Admin bootstrap is not enabled.");
+        }
+
+        if (bootstrapAdminEmail == null || bootstrapAdminEmail.isBlank() ||
+                bootstrapAdminPassword == null || bootstrapAdminPassword.isBlank()) {
+            throw new BadRequestException("Bootstrap admin credentials are not configured.");
+        }
+
+        if (userRepo.existsByEmail(bootstrapAdminEmail) || userRepo.existsByRole(Role.ADMIN)) {
+            throw new BadRequestException("An admin account already exists.");
+        }
+
+        var hashed = passwordEncoder.encode(bootstrapAdminPassword);
 
         var user = UserEntity.builder()
                 .firstName("Admin")
                 .lastName("User")
-                .email("admin@a3fsm.com")
+                .email(bootstrapAdminEmail)
                 .password(hashed)
                 .role(Role.ADMIN)
                 .active(true)
