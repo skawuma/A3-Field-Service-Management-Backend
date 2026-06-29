@@ -333,6 +333,19 @@ If you are discussing the backend in a review or interview, the strongest points
 - can submit notes, attachments, and structured completion
 - cannot use admin-only recovery actions
 
+## Sprint 10 Demo Profile
+
+The public portfolio demo is isolated behind the `demo` Spring profile and an explicit data flag:
+
+```bash
+SPRING_PROFILES_ACTIVE=prod,demo
+DEMO_DATA_ENABLED=true
+```
+
+When both are active, the backend idempotently creates three public role accounts, four fictional technicians, eight realistic work orders, recent timeline events, overdue and unassigned work, and two structured completion reports. Demo passwords are processed by the existing BCrypt encoder before storage.
+
+The seed does not run in ordinary production. Demo mode also blocks permanent technician deletion, while self-registration and admin bootstrap remain disabled.
+
 ## Local Development
 
 ### Run With Maven

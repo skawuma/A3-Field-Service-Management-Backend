@@ -1,0 +1,17 @@
+app:
+  bootstrap-demo-data: false
+  demo:
+    mode: true
+    data-enabled: ${DEMO_DATA_ENABLED:true}
+    admin:
+      email: admin.demo@a3fsm.com
+      password: "DemoAdmin2026!"
+    dispatcher:
+      email: dispatcher.demo@a3fsm.com
+      password: "DemoDispatch2026!"
+    technician:
+      email: tech.demo@a3fsm.com
+      password: "DemoTech2026!"
+  auth:
+    allow-self-registration: false
+    allow-admin-bootstrap: false

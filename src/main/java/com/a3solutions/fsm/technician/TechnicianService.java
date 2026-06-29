@@ -2,6 +2,7 @@ package com.a3solutions.fsm.technician;
 
 import com.a3solutions.fsm.auth.UserRepository;
 import com.a3solutions.fsm.common.PageResponse;
+import com.a3solutions.fsm.config.demo.DemoModeGuard;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import jakarta.transaction.Transactional;
 import org.springframework.data.domain.Page;
@@ -24,10 +25,16 @@ public class TechnicianService {
 
     private final TechnicianRepository repo;
     private final UserRepository userRepo;   // 🔥 NEW
+    private final DemoModeGuard demoModeGuard;
 
-    public TechnicianService(TechnicianRepository repo, UserRepository userRepo) {
+    public TechnicianService(
+            TechnicianRepository repo,
+            UserRepository userRepo,
+            DemoModeGuard demoModeGuard
+    ) {
         this.repo = repo;
         this.userRepo = userRepo;
+        this.demoModeGuard = demoModeGuard;
     }
 
     // ============================================================
@@ -131,6 +138,7 @@ public class TechnicianService {
 
     @Transactional
     public void delete(Long id) {
+        demoModeGuard.rejectPermanentDeletion("technicians");
         if (!repo.existsById(id)) {
             throw new NotFoundException("Technician not found");
         }

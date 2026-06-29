@@ -22,6 +22,7 @@ import java.util.List;
  */
 public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long>, JpaSpecificationExecutor<WorkOrderEntity> {
 
+    boolean existsByClientNameAndDescription(String clientName, String description);
     long countByStatus(WorkOrderStatus status);
     long countByStatusNotIn(Collection<WorkOrderStatus> statuses);
     long countByAssignedTechIdIsNull();
