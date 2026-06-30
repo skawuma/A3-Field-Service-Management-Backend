@@ -146,7 +146,7 @@ class WorkOrderServiceTest {
     }
 
     @Test
-    void startWorkOrderMovesAssignedWorkOrderToInProgressForAssignedTech() {
+    void startWorkOrderMovesAssignedWorkOrderToWorkStartedAndStartsSlaClock() {
         WorkOrderEntity workOrder = WorkOrderEntity.builder()
                 .id(12L)
                 .clientName("Beta")
@@ -169,8 +169,11 @@ class WorkOrderServiceTest {
 
         WorkOrderDto result = workOrderService.startWorkOrder(12L, 41L);
 
-        assertEquals(WorkOrderStatus.IN_PROGRESS, workOrder.getStatus());
-        assertEquals(WorkOrderStatus.IN_PROGRESS, result.status());
+        assertEquals(WorkOrderStatus.WORK_STARTED, workOrder.getStatus());
+        assertEquals(WorkOrderStatus.WORK_STARTED, result.status());
+        assertNotNull(workOrder.getWorkStartedAt());
+        assertNotNull(workOrder.getSlaClockStartedAt());
+        assertNotNull(workOrder.getSlaDueAt());
 
         ArgumentCaptor<WorkOrderStatus> previousStatusCaptor = ArgumentCaptor.forClass(WorkOrderStatus.class);
         verify(workOrderEventService).logStarted(eq(workOrder), previousStatusCaptor.capture());
@@ -203,6 +206,35 @@ class WorkOrderServiceTest {
 
         assertEquals("Cancelled work orders cannot be started.", ex.getMessage());
         verify(workOrderRepository, never()).save(any());
+    }
+
+    @Test
+    void startTravelAndArrivalAdvanceLifecycleWithoutResettingSlaClock() {
+        WorkOrderEntity workOrder = WorkOrderEntity.builder()
+                .id(30L)
+                .assignedTechId(7L)
+                .priority("HIGH")
+                .status(WorkOrderStatus.ASSIGNED)
+                .build();
+        TechnicianEntity technician = TechnicianEntity.builder().id(7L).userId(41L).build();
+
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(technician));
+        when(workOrderRepository.findById(30L)).thenReturn(Optional.of(workOrder));
+        when(workOrderRepository.save(workOrder)).thenReturn(workOrder);
+
+        WorkOrderDto enRoute = workOrderService.startTravel(30L, 41L);
+        Instant clockStartedAt = workOrder.getSlaClockStartedAt();
+
+        assertEquals(WorkOrderStatus.EN_ROUTE, enRoute.status());
+        assertEquals(120, enRoute.slaDurationMinutes());
+        assertNotNull(clockStartedAt);
+        assertEquals(clockStartedAt.plusSeconds(120 * 60L), workOrder.getSlaDueAt());
+
+        WorkOrderDto arrived = workOrderService.arriveOnsite(30L, 41L);
+
+        assertEquals(WorkOrderStatus.ARRIVED, arrived.status());
+        assertNotNull(workOrder.getArrivedAt());
+        assertEquals(clockStartedAt, workOrder.getSlaClockStartedAt());
     }
 
     @Test
@@ -498,7 +530,7 @@ class WorkOrderServiceTest {
                 () -> workOrderService.completeWorkOrder(17L, request, 41L)
         );
 
-        assertEquals("Only IN_PROGRESS work orders can be signed off.", ex.getMessage());
+        assertEquals("Only WORK_STARTED work orders can be signed off.", ex.getMessage());
         verify(workOrderRepository, never()).save(any());
     }
 

@@ -4,12 +4,13 @@ import com.a3solutions.fsm.observability.FsmOperationalMetrics;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
 import com.a3solutions.fsm.workorder.WorkOrderStatus;
-import org.springframework.data.domain.Pageable;
+import com.a3solutions.fsm.workorder.WorkOrderEventService;
+import com.a3solutions.fsm.workorder.WorkOrderEventType;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
-import java.time.LocalDate;
-import java.time.ZoneId;
+import java.time.Instant;
 import java.util.List;
 
 /**
@@ -20,47 +21,60 @@ import java.util.List;
  */
 
 /**
- * Lightweight Sprint 8 SLA breach publisher. This keeps alerting simple for
- * now and avoids introducing a persistent alerts table before it is needed.
+ * Sprint 11 execution-SLA monitor. Scheduled calendar dates remain a planning
+ * concern; this monitor uses the policy-selected execution deadline.
  */
 @Component
 public class SlaRealtimeMonitor {
 
     private static final List<WorkOrderStatus> ACTIVE_SLA_STATUSES = List.of(
-            WorkOrderStatus.OPEN,
-            WorkOrderStatus.ASSIGNED,
+            WorkOrderStatus.EN_ROUTE,
+            WorkOrderStatus.ARRIVED,
+            WorkOrderStatus.WORK_STARTED,
             WorkOrderStatus.IN_PROGRESS
     );
 
     private final WorkOrderRepository workOrderRepository;
     private final RealtimeEventPublisher realtimeEventPublisher;
     private final FsmOperationalMetrics metrics;
+    private final WorkOrderEventService eventService;
 
     public SlaRealtimeMonitor(
             WorkOrderRepository workOrderRepository,
             RealtimeEventPublisher realtimeEventPublisher,
-            FsmOperationalMetrics metrics
+            FsmOperationalMetrics metrics,
+            WorkOrderEventService eventService
     ) {
         this.workOrderRepository = workOrderRepository;
         this.realtimeEventPublisher = realtimeEventPublisher;
         this.metrics = metrics;
+        this.eventService = eventService;
     }
 
     @Scheduled(
             fixedDelayString = "${app.realtime.sla-monitor-delay-ms:60000}",
             initialDelayString = "${app.realtime.sla-monitor-initial-delay-ms:15000}"
     )
+    @Transactional
     public void publishNewSlaBreaches() {
-        LocalDate currentDate = LocalDate.now(ZoneId.systemDefault());
+        Instant now = Instant.now();
+        List<WorkOrderEntity> active = workOrderRepository
+                .findBySlaDueAtIsNotNullAndStatusNotIn(List.of(WorkOrderStatus.COMPLETED, WorkOrderStatus.CANCELLED))
+                .stream()
+                .filter(wo -> ACTIVE_SLA_STATUSES.contains(wo.getStatus()))
+                .toList();
 
-        List<WorkOrderEntity> overdueWorkOrders =
-                workOrderRepository.findByScheduledDateBeforeAndStatusInOrderByScheduledDateAscIdAsc(
-                        currentDate,
-                        ACTIVE_SLA_STATUSES,
-                        Pageable.unpaged()
-                );
-
-        metrics.recordSlaMonitorRun(overdueWorkOrders.size());
-        realtimeEventPublisher.publishNewSlaBreaches(overdueWorkOrders, currentDate, true);
+        for (WorkOrderEntity workOrder : active) {
+            if (now.isAfter(workOrder.getSlaDueAt()) && !Boolean.TRUE.equals(workOrder.getSlaBreached())) {
+                workOrder.setSlaBreached(true);
+                workOrder.setBreachMinutes((int) Math.max(0,
+                        java.time.Duration.between(workOrder.getSlaDueAt(), now).toMinutes()));
+                workOrderRepository.save(workOrder);
+                eventService.recordEvent(workOrder, WorkOrderEventType.SLA_BREACHED,
+                        "Execution SLA breached.", workOrder.getSlaDueAt().toString(), now.toString(), "SYSTEM");
+            }
+            realtimeEventPublisher.publishExecutionSlaState(workOrder, now);
+        }
+        metrics.recordSlaMonitorRun(active.size());
     }
 }

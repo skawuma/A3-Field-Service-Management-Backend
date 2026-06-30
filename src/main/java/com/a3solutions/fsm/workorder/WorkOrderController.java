@@ -252,6 +252,39 @@ public class WorkOrderController {
         return ResponseEntity.ok(service.startWorkOrder(id, user.getId()));
     }
 
+    @Operation(summary = "Start technician travel", description = "TECH only. Transitions ASSIGNED to EN_ROUTE and starts the execution SLA clock.")
+    @PatchMapping("/{id}/start-travel")
+    @PreAuthorize("hasRole('TECH')")
+    public ResponseEntity<WorkOrderDto> startTravel(@PathVariable Long id, Authentication auth) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+        if (!service.canTechAccessWorkOrder(id, user.getId())) {
+            throw new AccessDeniedException("TECH can only start travel for assigned work orders.");
+        }
+        return ResponseEntity.ok(service.startTravel(id, user.getId()));
+    }
+
+    @Operation(summary = "Record onsite arrival", description = "TECH only. Transitions EN_ROUTE to ARRIVED without resetting the execution SLA clock.")
+    @PatchMapping("/{id}/arrive-onsite")
+    @PreAuthorize("hasRole('TECH')")
+    public ResponseEntity<WorkOrderDto> arriveOnsite(@PathVariable Long id, Authentication auth) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+        if (!service.canTechAccessWorkOrder(id, user.getId())) {
+            throw new AccessDeniedException("TECH can only mark arrival for assigned work orders.");
+        }
+        return ResponseEntity.ok(service.arriveOnsite(id, user.getId()));
+    }
+
+    @Operation(summary = "Start onsite work", description = "TECH only. Transitions EN_ROUTE or ARRIVED to WORK_STARTED. The legacy /start route remains compatible.")
+    @PatchMapping("/{id}/start-work")
+    @PreAuthorize("hasRole('TECH')")
+    public ResponseEntity<WorkOrderDto> startWork(@PathVariable Long id, Authentication auth) {
+        UserDetailsImpl user = (UserDetailsImpl) auth.getPrincipal();
+        if (!service.canTechAccessWorkOrder(id, user.getId())) {
+            throw new AccessDeniedException("TECH can only start assigned work orders.");
+        }
+        return ResponseEntity.ok(service.startWorkOrder(id, user.getId()));
+    }
+
     @Operation(
             summary = "Return a work order to OPEN",
             description = "TECH only. Releases an assigned work order back to OPEN so dispatch/admin can reassign it. Not allowed once work is IN_PROGRESS or COMPLETED."

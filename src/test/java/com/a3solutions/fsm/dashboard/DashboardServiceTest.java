@@ -65,7 +65,7 @@ class DashboardServiceTest {
         when(technicianRepository.count()).thenReturn(9L);
         when(workOrderRepository.count()).thenReturn(42L);
         when(workOrderRepository.countByStatus(WorkOrderStatus.OPEN)).thenReturn(11L);
-        when(workOrderRepository.countByStatus(WorkOrderStatus.IN_PROGRESS)).thenReturn(7L);
+        when(workOrderRepository.countByStatusIn(any(Collection.class))).thenReturn(7L);
         when(workOrderRepository.countByAssignedTechIdIsNull()).thenReturn(3L);
         when(workOrderRepository.countByScheduledDate(any(LocalDate.class))).thenReturn(6L);
         when(workOrderRepository.countByScheduledDateAndStatusNotIn(
@@ -86,7 +86,7 @@ class DashboardServiceTest {
                 any(Collection.class)
         )).thenReturn(4L);
         when(workOrderRepository.countByAssignedTechIdIsNotNullAndStatusNotIn(any(Collection.class))).thenReturn(17L);
-        when(workOrderRepository.countByAssignedTechIdIsNotNullAndStatus(WorkOrderStatus.IN_PROGRESS)).thenReturn(6L);
+        when(workOrderRepository.countByAssignedTechIdIsNotNullAndStatusIn(any(Collection.class))).thenReturn(6L);
 
         DashboardSummary summary = dashboardService.getSummary();
 
@@ -141,7 +141,7 @@ class DashboardServiceTest {
                 eq(5L),
                 any(Collection.class)
         )).thenReturn(6L);
-        when(workOrderRepository.countByAssignedTechIdAndStatus(5L, WorkOrderStatus.IN_PROGRESS)).thenReturn(4L);
+        when(workOrderRepository.countByAssignedTechIdAndStatusIn(eq(5L), any(Collection.class))).thenReturn(4L);
 
         DashboardSummary summary = dashboardService.getSummary();
 
@@ -181,9 +181,12 @@ class DashboardServiceTest {
         Map<LocalDate, Long> trendTotals = analytics.completionTrend().stream()
                 .collect(Collectors.toMap(DashboardTrendPoint::date, DashboardTrendPoint::total));
 
-        assertEquals(5, analytics.workOrdersByStatus().size());
+        assertEquals(8, analytics.workOrdersByStatus().size());
         assertEquals(5L, statusTotals.get("OPEN"));
         assertEquals(0L, statusTotals.get("ASSIGNED"));
+        assertEquals(0L, statusTotals.get("EN_ROUTE"));
+        assertEquals(0L, statusTotals.get("ARRIVED"));
+        assertEquals(0L, statusTotals.get("WORK_STARTED"));
         assertEquals(3L, statusTotals.get("IN_PROGRESS"));
         assertEquals(8L, statusTotals.get("COMPLETED"));
         assertEquals(0L, statusTotals.get("CANCELLED"));

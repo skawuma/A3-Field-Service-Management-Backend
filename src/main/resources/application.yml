@@ -46,6 +46,9 @@ storage:
 
 app:
   bootstrap-demo-data: ${APP_BOOTSTRAP_DEMO_DATA:false}
+  demo:
+    mode: ${DEMO_MODE:false}
+    data-enabled: ${DEMO_DATA_ENABLED:false}
   auth:
     allow-self-registration: ${APP_AUTH_ALLOW_SELF_REGISTRATION:false}
     allow-admin-bootstrap: ${APP_AUTH_ALLOW_ADMIN_BOOTSTRAP:false}

@@ -97,19 +97,19 @@ public class WorkOrderEventService {
 
         recordEvent(
                 wo,
-                WorkOrderEventType.STARTED,
+                WorkOrderEventType.WORK_STARTED,
                 "Technician started work.",
                 null,
-                WorkOrderStatus.IN_PROGRESS.name(),
+                WorkOrderStatus.WORK_STARTED.name(),
                 actor
         );
 
         recordEvent(
                 wo,
                 WorkOrderEventType.STATUS_CHANGED,
-                "Status changed to IN_PROGRESS.",
+                "Status changed to WORK_STARTED.",
                 previousStatus == null ? null : previousStatus.name(),
-                WorkOrderStatus.IN_PROGRESS.name(),
+                WorkOrderStatus.WORK_STARTED.name(),
                 actor
         );
     }

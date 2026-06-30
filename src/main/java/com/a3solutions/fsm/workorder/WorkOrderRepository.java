@@ -22,7 +22,9 @@ import java.util.List;
  */
 public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long>, JpaSpecificationExecutor<WorkOrderEntity> {
 
+    boolean existsByClientNameAndDescription(String clientName, String description);
     long countByStatus(WorkOrderStatus status);
+    long countByStatusIn(Collection<WorkOrderStatus> statuses);
     long countByStatusNotIn(Collection<WorkOrderStatus> statuses);
     long countByAssignedTechIdIsNull();
     long countByAssignedTechIdIsNullAndStatusNotIn(Collection<WorkOrderStatus> statuses);
@@ -33,8 +35,12 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long
     long countByStatusAndPriorityIn(WorkOrderStatus status, Collection<String> priorities);
     long countByAssignedTechIdIsNotNullAndStatusNotIn(Collection<WorkOrderStatus> statuses);
     long countByAssignedTechIdIsNotNullAndStatus(WorkOrderStatus status);
+    long countByAssignedTechIdIsNotNullAndStatusIn(Collection<WorkOrderStatus> statuses);
     long countByAssignedTechIdAndStatusNotIn(Long assignedTechId, Collection<WorkOrderStatus> statuses);
     long countByAssignedTechIdAndStatus(Long assignedTechId, WorkOrderStatus status);
+    long countByAssignedTechIdAndStatusIn(Long assignedTechId, Collection<WorkOrderStatus> statuses);
+    List<WorkOrderEntity> findByAssignedTechId(Long assignedTechId);
+    List<WorkOrderEntity> findBySlaDueAtIsNotNullAndStatusNotIn(Collection<WorkOrderStatus> statuses);
     @Query(value = """
             select status as bucketKey, count(*) as total
             from work_orders
@@ -107,7 +113,7 @@ public interface WorkOrderRepository extends JpaRepository<WorkOrderEntity, Long
                 trim(concat(coalesce(t.first_name, ''), ' ', coalesce(t.last_name, ''))) as technicianName,
                 coalesce(sum(case when wo.status not in (:terminalStatuses) then 1 else 0 end), 0) as totalAssignedWorkOrders,
                 coalesce(sum(case when wo.status in ('OPEN', 'ASSIGNED') then 1 else 0 end), 0) as openAssignedWorkOrders,
-                coalesce(sum(case when wo.status = 'IN_PROGRESS' then 1 else 0 end), 0) as inProgressAssignedWorkOrders,
+                coalesce(sum(case when wo.status in ('EN_ROUTE', 'ARRIVED', 'WORK_STARTED', 'IN_PROGRESS') then 1 else 0 end), 0) as inProgressAssignedWorkOrders,
                 coalesce(sum(case
                     when wo.status not in (:terminalStatuses) and wo.scheduled_date = :currentDate then 1
                     else 0

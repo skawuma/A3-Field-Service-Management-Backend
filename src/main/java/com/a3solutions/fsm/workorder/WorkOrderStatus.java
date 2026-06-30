@@ -9,6 +9,10 @@ package com.a3solutions.fsm.workorder;
 public enum WorkOrderStatus {
     OPEN,
     ASSIGNED,
+    EN_ROUTE,
+    ARRIVED,
+    WORK_STARTED,
+    /** @deprecated retained for work orders created before Sprint 11. */
     IN_PROGRESS,
     COMPLETED,
     CANCELLED

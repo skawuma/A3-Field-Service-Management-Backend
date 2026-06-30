@@ -35,7 +35,21 @@ public record WorkOrderDto(
         String signatureUrl,
         @Schema(description = "Technician completion notes.")
         String completionNotes,
-        @Schema(description = "Completion timestamp.")
-        Instant completedAt
+        @Schema(description = "Completion timestamp.") Instant completedAt,
+        @Schema(description = "Creation timestamp; starts the time-to-assign and resolution clocks.") Instant createdAt,
+        @Schema(description = "Technician assignment timestamp.") Instant assignedAt,
+        @Schema(description = "Technician acceptance timestamp, when used by policy.") Instant acceptedAt,
+        @Schema(description = "Travel start timestamp; starts the execution SLA in the Sprint 11 policy.") Instant enRouteAt,
+        @Schema(description = "Onsite arrival timestamp.") Instant arrivedAt,
+        @Schema(description = "Actual work start timestamp.") Instant workStartedAt,
+        @Schema(description = "Timestamp selected by policy as the execution SLA anchor.") Instant slaClockStartedAt,
+        @Schema(description = "Execution SLA deadline.") Instant slaDueAt,
+        @Schema(description = "Whether the execution SLA was breached.") Boolean slaBreached,
+        @Schema(description = "Configured execution SLA duration in minutes.") Integer slaDurationMinutes,
+        @Schema(description = "Actual execution duration in minutes.") Integer actualCompletionMinutes,
+        @Schema(description = "Minutes beyond the execution SLA; zero when met.") Integer breachMinutes,
+        @Schema(description = "Dispatch clock: minutes from creation to assignment.") Long timeToAssignMinutes,
+        @Schema(description = "Response clock: minutes from assignment to SLA/travel start.") Long timeToStartMinutes,
+        @Schema(description = "Resolution clock: minutes from creation to completion.") Long resolutionMinutes
 ) {
 }

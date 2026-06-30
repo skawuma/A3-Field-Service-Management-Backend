@@ -46,6 +46,41 @@ private String signatureUrl;
 
     @Column(name = "completed_at")
     private Instant completedAt;
+
+    @Column(name = "assigned_at")
+    private Instant assignedAt;
+
+    @Column(name = "accepted_at")
+    private Instant acceptedAt;
+
+    @Column(name = "en_route_at")
+    private Instant enRouteAt;
+
+    @Column(name = "arrived_at")
+    private Instant arrivedAt;
+
+    @Column(name = "work_started_at")
+    private Instant workStartedAt;
+
+    @Column(name = "sla_clock_started_at")
+    private Instant slaClockStartedAt;
+
+    @Column(name = "sla_due_at")
+    private Instant slaDueAt;
+
+    @Builder.Default
+    @Column(name = "sla_breached", nullable = false)
+    private Boolean slaBreached = false;
+
+    @Column(name = "sla_duration_minutes")
+    private Integer slaDurationMinutes;
+
+    @Column(name = "actual_completion_minutes")
+    private Integer actualCompletionMinutes;
+
+    @Column(name = "breach_minutes")
+    private Integer breachMinutes;
+
     @Builder.Default
     @Column(nullable = false, updatable = false)
     private Instant createdAt = Instant.now();

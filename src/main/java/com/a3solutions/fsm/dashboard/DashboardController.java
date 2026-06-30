@@ -101,6 +101,16 @@ public class DashboardController {
     }
 
     @Operation(
+            summary = "Get multi-clock SLA intelligence",
+            description = "Returns dispatch, response, execution, breach, and technician SLA performance metrics introduced in Sprint 11."
+    )
+    @GetMapping("/sla-intelligence")
+    @PreAuthorize("hasAnyRole('ADMIN','DISPATCH','TECH')")
+    public ResponseEntity<DashboardSlaIntelligence> getSlaIntelligence() {
+        return ResponseEntity.ok(service.getSlaIntelligence());
+    }
+
+    @Operation(
             summary = "Get technician workload overview",
             description = "Returns workload distribution per technician, including open, in-progress, due-today, and overdue assigned work orders. This powers workload cards and heatmap-style dispatch views."
     )

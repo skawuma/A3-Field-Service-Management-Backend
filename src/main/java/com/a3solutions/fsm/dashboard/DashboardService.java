@@ -15,6 +15,7 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
 
 import java.time.Instant;
+import java.time.Duration;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -22,6 +23,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.ArrayList;
 import java.util.stream.Collectors;
 
 /**
@@ -38,9 +40,18 @@ public class DashboardService {
             WorkOrderStatus.COMPLETED,
             WorkOrderStatus.CANCELLED
     );
+    private static final List<WorkOrderStatus> EXECUTION_STATUSES = List.of(
+            WorkOrderStatus.EN_ROUTE,
+            WorkOrderStatus.ARRIVED,
+            WorkOrderStatus.WORK_STARTED,
+            WorkOrderStatus.IN_PROGRESS
+    );
     private static final List<String> STATUS_BUCKET_ORDER = List.of(
             "OPEN",
             "ASSIGNED",
+            "EN_ROUTE",
+            "ARRIVED",
+            "WORK_STARTED",
             "IN_PROGRESS",
             "COMPLETED",
             "CANCELLED"
@@ -58,6 +69,9 @@ public class DashboardService {
     private static final List<WorkOrderStatus> ACTIVE_SLA_STATUSES = List.of(
             WorkOrderStatus.OPEN,
             WorkOrderStatus.ASSIGNED,
+            WorkOrderStatus.EN_ROUTE,
+            WorkOrderStatus.ARRIVED,
+            WorkOrderStatus.WORK_STARTED,
             WorkOrderStatus.IN_PROGRESS
     );
 
@@ -91,7 +105,7 @@ public class DashboardService {
         long totalTechs = techRepo.count();
         long totalWO = woRepo.count();
         long open = woRepo.countByStatus(WorkOrderStatus.OPEN);
-        long inProgress = woRepo.countByStatus(WorkOrderStatus.IN_PROGRESS);
+        long inProgress = woRepo.countByStatusIn(EXECUTION_STATUSES);
         long unassigned = woRepo.countByAssignedTechIdIsNull();
         long scheduledToday = woRepo.countByScheduledDate(currentDate);
         long dueToday = woRepo.countByScheduledDateAndStatusNotIn(currentDate, TERMINAL_STATUSES);
@@ -110,7 +124,7 @@ public class DashboardService {
                 List.of("HIGH", "CRITICAL")
         );
         long activeAssigned = woRepo.countByAssignedTechIdIsNotNullAndStatusNotIn(TERMINAL_STATUSES);
-        long assignedInProgress = woRepo.countByAssignedTechIdIsNotNullAndStatus(WorkOrderStatus.IN_PROGRESS);
+        long assignedInProgress = woRepo.countByAssignedTechIdIsNotNullAndStatusIn(EXECUTION_STATUSES);
 
         return new DashboardSummary(
                 totalTechs,
@@ -140,7 +154,7 @@ public class DashboardService {
                 TERMINAL_STATUSES
         );
         long activeAssigned = woRepo.countByAssignedTechIdAndStatusNotIn(technicianId, TERMINAL_STATUSES);
-        long assignedInProgress = woRepo.countByAssignedTechIdAndStatus(technicianId, WorkOrderStatus.IN_PROGRESS);
+        long assignedInProgress = woRepo.countByAssignedTechIdAndStatusIn(technicianId, EXECUTION_STATUSES);
 
         return new DashboardSummary(
                 0L,
@@ -325,7 +339,9 @@ public class DashboardService {
         return switch (status) {
             case OPEN -> "Open";
             case ASSIGNED -> "Assigned";
-            case IN_PROGRESS -> "In Progress";
+            case EN_ROUTE -> "En Route";
+            case ARRIVED -> "Arrived";
+            case WORK_STARTED, IN_PROGRESS -> "Work Started";
             case COMPLETED -> "Completed";
             case CANCELLED -> "Cancelled";
         };
@@ -383,6 +399,101 @@ public class DashboardService {
                 .map(this::toTechnicianWorkloadItem)
                 .toList();
     }
+
+    public DashboardSlaIntelligence getSlaIntelligence() {
+        Instant now = Instant.now();
+        List<WorkOrderEntity> workOrders = hasRole("TECH")
+                ? woRepo.findByAssignedTechId(getCurrentTechnicianId())
+                : woRepo.findAll();
+
+        long nearBreach = workOrders.stream()
+                .filter(this::isActiveExecutionSla)
+                .filter(wo -> !wo.getSlaDueAt().isBefore(now))
+                .filter(wo -> !wo.getSlaDueAt().isAfter(now.plus(Duration.ofMinutes(30))))
+                .count();
+        long activeBreached = workOrders.stream()
+                .filter(this::isActiveExecutionSla)
+                .filter(wo -> Boolean.TRUE.equals(wo.getSlaBreached()) || wo.getSlaDueAt().isBefore(now))
+                .count();
+
+        List<WorkOrderEntity> completedWithSla = workOrders.stream()
+                .filter(wo -> wo.getStatus() == WorkOrderStatus.COMPLETED)
+                .filter(wo -> wo.getSlaClockStartedAt() != null && wo.getCompletedAt() != null)
+                .toList();
+        long completedBreached = completedWithSla.stream()
+                .filter(wo -> Boolean.TRUE.equals(wo.getSlaBreached()))
+                .count();
+
+        return new DashboardSlaIntelligence(
+                nearBreach,
+                activeBreached,
+                completedWithSla.size() - completedBreached,
+                completedBreached,
+                averageMinutes(workOrders, ClockMetric.ASSIGN),
+                averageMinutes(workOrders, ClockMetric.START),
+                averageMinutes(completedWithSla, ClockMetric.COMPLETE),
+                buildTechnicianSlaPerformance(completedWithSla)
+        );
+    }
+
+    private boolean isActiveExecutionSla(WorkOrderEntity wo) {
+        return wo.getSlaDueAt() != null
+                && wo.getStatus() != WorkOrderStatus.COMPLETED
+                && wo.getStatus() != WorkOrderStatus.CANCELLED;
+    }
+
+    private Long averageMinutes(List<WorkOrderEntity> workOrders, ClockMetric metric) {
+        return workOrders.stream()
+                .map(wo -> switch (metric) {
+                    case ASSIGN -> durationMinutes(wo.getCreatedAt(), wo.getAssignedAt());
+                    case START -> durationMinutes(wo.getAssignedAt(), wo.getSlaClockStartedAt());
+                    case COMPLETE -> durationMinutes(wo.getSlaClockStartedAt(), wo.getCompletedAt());
+                })
+                .filter(Objects::nonNull)
+                .mapToLong(Long::longValue)
+                .average()
+                .stream()
+                .mapToLong(Math::round)
+                .boxed()
+                .findFirst()
+                .orElse(null);
+    }
+
+    private Long durationMinutes(Instant start, Instant end) {
+        return start == null || end == null ? null : Math.max(0, Duration.between(start, end).toMinutes());
+    }
+
+    private List<DashboardTechnicianSlaPerformance> buildTechnicianSlaPerformance(
+            List<WorkOrderEntity> completedWithSla
+    ) {
+        Map<Long, List<WorkOrderEntity>> byTechnician = completedWithSla.stream()
+                .filter(wo -> wo.getAssignedTechId() != null)
+                .collect(Collectors.groupingBy(WorkOrderEntity::getAssignedTechId));
+        List<DashboardTechnicianSlaPerformance> result = new ArrayList<>();
+        byTechnician.forEach((technicianId, completed) -> {
+            long breached = completed.stream().filter(wo -> Boolean.TRUE.equals(wo.getSlaBreached())).count();
+            long within = completed.size() - breached;
+            long average = Math.round(completed.stream()
+                    .map(WorkOrderEntity::getActualCompletionMinutes)
+                    .filter(Objects::nonNull)
+                    .mapToInt(Integer::intValue)
+                    .average().orElse(0));
+            String name = techRepo.findById(technicianId)
+                    .map(tech -> tech.getFullName() == null || tech.getFullName().isBlank()
+                            ? "Technician #" + technicianId : tech.getFullName())
+                    .orElse("Technician #" + technicianId);
+            result.add(new DashboardTechnicianSlaPerformance(
+                    technicianId, name, completed.size(), within, breached,
+                    completed.isEmpty() ? 0 : Math.round(within * 1000.0 / completed.size()) / 10.0,
+                    average
+            ));
+        });
+        return result.stream()
+                .sorted(java.util.Comparator.comparingDouble(DashboardTechnicianSlaPerformance::compliancePercent).reversed())
+                .toList();
+    }
+
+    private enum ClockMetric { ASSIGN, START, COMPLETE }
 
 
 

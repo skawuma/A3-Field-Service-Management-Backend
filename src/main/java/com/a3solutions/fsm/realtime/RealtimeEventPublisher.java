@@ -12,6 +12,8 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.time.LocalDate;
+import java.time.Instant;
+import java.time.Duration;
 import java.time.temporal.ChronoUnit;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -47,6 +49,8 @@ public class RealtimeEventPublisher {
     private final UserRepository userRepository;
     private final FsmOperationalMetrics metrics;
     private final Set<Long> publishedOverdueWorkOrderIds = ConcurrentHashMap.newKeySet();
+    private final Set<Long> publishedNearBreachWorkOrderIds = ConcurrentHashMap.newKeySet();
+    private final Set<Long> publishedExecutionBreachWorkOrderIds = ConcurrentHashMap.newKeySet();
 
     public RealtimeEventPublisher(
             SimpMessagingTemplate messagingTemplate,
@@ -156,31 +160,79 @@ public class RealtimeEventPublisher {
         Map<String, Object> metadata = createWorkOrderMetadata(workOrder);
         metadata.put("eventKey", "completion");
         metadata.put("completedAt", workOrder.getCompletedAt() != null ? workOrder.getCompletedAt().toString() : null);
+        metadata.put("slaBreached", Boolean.TRUE.equals(workOrder.getSlaBreached()));
+        metadata.put("breachMinutes", workOrder.getBreachMinutes());
+        metadata.put("actualCompletionMinutes", workOrder.getActualCompletionMinutes());
 
         String activityDescription = formatWorkOrderRef(workOrder.getId()) + " completed and signed";
         metadata.put("activityTitle", "Work order completed");
         metadata.put("activityDescription", activityDescription);
 
-        publishDashboardEvent(
-                RealtimeEventMessage.of(
+        RealtimeEventMessage completionMessage = RealtimeEventMessage.of(
                         RealtimeEventType.WORK_ORDER_COMPLETED,
                         activityDescription,
                         workOrder.getId(),
                         workOrder.getAssignedTechId(),
                         workOrder.getStatus() != null ? workOrder.getStatus().name() : null,
                         metadata
-                )
-        );
+                );
+        publishDashboardEvent(completionMessage);
+        publishAlertEvent(completionMessage);
+        publishedNearBreachWorkOrderIds.remove(workOrder.getId());
+        publishedExecutionBreachWorkOrderIds.remove(workOrder.getId());
+    }
+
+    public void publishExecutionSlaState(WorkOrderEntity workOrder, Instant now) {
+        if (workOrder.getId() == null || workOrder.getSlaDueAt() == null) {
+            return;
+        }
+        Duration remaining = Duration.between(now, workOrder.getSlaDueAt());
+        if (remaining.isNegative()) {
+            if (publishedExecutionBreachWorkOrderIds.add(workOrder.getId())) {
+                publishExecutionSlaAlert(workOrder, RealtimeEventType.SLA_BREACHED,
+                        Math.max(0, -remaining.toMinutes()), "Execution SLA breached");
+            }
+            return;
+        }
+        if (remaining.compareTo(Duration.ofMinutes(30)) <= 0
+                && publishedNearBreachWorkOrderIds.add(workOrder.getId())) {
+            publishExecutionSlaAlert(workOrder, RealtimeEventType.SLA_NEAR_BREACH,
+                    remaining.toMinutes(), "Execution SLA near breach");
+        }
+    }
+
+    private void publishExecutionSlaAlert(WorkOrderEntity workOrder, RealtimeEventType type,
+                                          long minutes, String title) {
+        Map<String, Object> metadata = createWorkOrderMetadata(workOrder);
+        metadata.put("eventKey", type == RealtimeEventType.SLA_BREACHED ? "sla_breach" : "sla_near_breach");
+        metadata.put("activityTitle", title);
+        metadata.put("slaDueAt", workOrder.getSlaDueAt().toString());
+        metadata.put(type == RealtimeEventType.SLA_BREACHED ? "breachMinutes" : "minutesRemaining", minutes);
+        String description = formatWorkOrderRef(workOrder.getId()) + (type == RealtimeEventType.SLA_BREACHED
+                ? " breached execution SLA by " + minutes + " minutes"
+                : " is due in " + minutes + " minutes");
+        metadata.put("activityDescription", description);
+        RealtimeEventMessage message = RealtimeEventMessage.of(type, description, workOrder.getId(),
+                workOrder.getAssignedTechId(), workOrder.getStatus().name(), metadata);
+        publishDashboardEvent(message);
+        publishAlertEvent(message);
     }
 
     public void publishWorkOrderStarted(WorkOrderEntity workOrder, String previousStatus) {
         Map<String, Object> metadata = createWorkOrderMetadata(workOrder);
-        metadata.put("eventKey", "start");
+        String statusLabel = formatStatusLabel(workOrder.getStatus());
+        String eventKey = switch (workOrder.getStatus()) {
+            case EN_ROUTE -> "start_travel";
+            case ARRIVED -> "arrive_onsite";
+            case WORK_STARTED, IN_PROGRESS -> "start_work";
+            default -> "status_change";
+        };
+        metadata.put("eventKey", eventKey);
         metadata.put("previousStatus", previousStatus);
         metadata.put("newStatus", workOrder.getStatus() != null ? workOrder.getStatus().name() : null);
 
-        String activityDescription = formatWorkOrderRef(workOrder.getId()) + " marked In Progress";
-        metadata.put("activityTitle", "Work order started");
+        String activityDescription = formatWorkOrderRef(workOrder.getId()) + " marked " + statusLabel;
+        metadata.put("activityTitle", statusLabel);
         metadata.put("activityDescription", activityDescription);
 
         publishDashboardEvent(
@@ -391,6 +443,8 @@ public class RealtimeEventPublisher {
         metadata.put("assignedTechId", workOrder.getAssignedTechId());
         metadata.put("assignedTechName", resolveTechnicianName(workOrder.getAssignedTechId()));
         metadata.put("statusLabel", formatStatusLabel(workOrder.getStatus()));
+        metadata.put("slaDueAt", workOrder.getSlaDueAt() == null ? null : workOrder.getSlaDueAt().toString());
+        metadata.put("slaBreached", Boolean.TRUE.equals(workOrder.getSlaBreached()));
         return metadata;
     }
 
@@ -463,7 +517,9 @@ public class RealtimeEventPublisher {
         return switch (status) {
             case OPEN -> "Open";
             case ASSIGNED -> "Assigned";
-            case IN_PROGRESS -> "In Progress";
+            case EN_ROUTE -> "En Route";
+            case ARRIVED -> "Arrived";
+            case WORK_STARTED, IN_PROGRESS -> "Work Started";
             case COMPLETED -> "Completed";
             case CANCELLED -> "Cancelled";
         };

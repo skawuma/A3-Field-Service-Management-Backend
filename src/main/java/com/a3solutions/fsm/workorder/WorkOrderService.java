@@ -116,6 +116,7 @@ public class WorkOrderService {
     // =====================================================================
     @Transactional
     public WorkOrderDto create(WorkOrderCreateRequest req) {
+        boolean createdAssigned = req.assignedTechId() != null;
         var entity = WorkOrderEntity.builder()
                 .clientName(req.clientName())
                 .address(req.address())
@@ -123,7 +124,9 @@ public class WorkOrderService {
                 .assignedTechId(req.assignedTechId())
                 .scheduledDate(req.scheduledDate())
                 .priority(req.priority())
-                .status(req.status() != null ? req.status() : WorkOrderStatus.OPEN)
+                .slaDurationMinutes(SlaClock.durationForPriority(req.priority()))
+                .assignedAt(createdAssigned ? Instant.now() : null)
+                .status(req.status() != null ? req.status() : (createdAssigned ? WorkOrderStatus.ASSIGNED : WorkOrderStatus.OPEN))
                 .build();
 
         WorkOrderEntity saved = repo.save(entity);
@@ -159,6 +162,11 @@ public class WorkOrderService {
             nextStatus = WorkOrderStatus.ASSIGNED;
             wo.setStatus(nextStatus);
         }
+        if (!Objects.equals(oldTechId, req.technicianId()) &&
+                (oldStatus == null || oldStatus == WorkOrderStatus.OPEN || oldStatus == WorkOrderStatus.ASSIGNED)) {
+            wo.setAssignedAt(Instant.now());
+            clearExecutionClock(wo);
+        }
 
         var saved = repo.save(wo);
 
@@ -173,7 +181,6 @@ public class WorkOrderService {
                 tech.getId().toString(),
                 actor
         );
-
         // 5. If status changed → record event
         if (oldStatus != nextStatus) {
             eventService.recordEvent(
@@ -343,7 +350,22 @@ public class WorkOrderService {
                 e.getPriority(),
                 e.getSignatureUrl(),
                 e.getCompletionNotes(),
-                e.getCompletedAt()
+                e.getCompletedAt(),
+                e.getCreatedAt(),
+                e.getAssignedAt(),
+                e.getAcceptedAt(),
+                e.getEnRouteAt(),
+                e.getArrivedAt(),
+                e.getWorkStartedAt(),
+                e.getSlaClockStartedAt(),
+                e.getSlaDueAt(),
+                Boolean.TRUE.equals(e.getSlaBreached()),
+                e.getSlaDurationMinutes(),
+                e.getActualCompletionMinutes(),
+                e.getBreachMinutes(),
+                SlaClock.nullableMinutesBetween(e.getCreatedAt(), e.getAssignedAt()),
+                SlaClock.nullableMinutesBetween(e.getAssignedAt(), e.getSlaClockStartedAt()),
+                SlaClock.nullableMinutesBetween(e.getCreatedAt(), e.getCompletedAt())
         );
     }
 
@@ -382,8 +404,8 @@ public class WorkOrderService {
             throw new NotFoundException("TECH not allowed to complete this work order.");
         }
 
-        if (wo.getStatus() != WorkOrderStatus.IN_PROGRESS) {
-            throw new BusinessRuleException("Only IN_PROGRESS work orders can be signed off.");
+        if (wo.getStatus() != WorkOrderStatus.WORK_STARTED && wo.getStatus() != WorkOrderStatus.IN_PROGRESS) {
+            throw new BusinessRuleException("Only WORK_STARTED work orders can be signed off.");
         }
 
         if (!workOrderCompletionRepository.existsByWorkOrderId(id)) {
@@ -399,7 +421,20 @@ public class WorkOrderService {
         WorkOrderStatus previousStatus = wo.getStatus();
         wo.setSignatureUrl(signatureUrl);
         wo.setCompletionNotes(req.completionNotes());
-        wo.setCompletedAt(Instant.now());
+        Instant completedAt = Instant.now();
+        wo.setCompletedAt(completedAt);
+        if (wo.getSlaClockStartedAt() == null) {
+            wo.setSlaClockStartedAt(wo.getWorkStartedAt() != null ? wo.getWorkStartedAt() : completedAt);
+        }
+        if (wo.getSlaDurationMinutes() == null) {
+            wo.setSlaDurationMinutes(SlaClock.durationForPriority(wo.getPriority()));
+        }
+        if (wo.getSlaDueAt() == null) {
+            wo.setSlaDueAt(wo.getSlaClockStartedAt().plusSeconds(wo.getSlaDurationMinutes() * 60L));
+        }
+        wo.setActualCompletionMinutes((int) SlaClock.minutesBetween(wo.getSlaClockStartedAt(), completedAt));
+        wo.setBreachMinutes((int) SlaClock.minutesBetween(wo.getSlaDueAt(), completedAt));
+        wo.setSlaBreached(completedAt.isAfter(wo.getSlaDueAt()));
         wo.setStatus(WorkOrderStatus.COMPLETED);
 
         WorkOrderEntity saved = repo.save(wo);
@@ -412,6 +447,16 @@ public class WorkOrderService {
                 "Status changed to COMPLETED.",
                 previousStatus == null ? null : previousStatus.name(),
                 WorkOrderStatus.COMPLETED.name(),
+                actor
+        );
+        eventService.recordEvent(
+                saved,
+                Boolean.TRUE.equals(saved.getSlaBreached()) ? WorkOrderEventType.SLA_BREACHED : WorkOrderEventType.SLA_MET,
+                Boolean.TRUE.equals(saved.getSlaBreached())
+                        ? "Work order completed after the execution SLA deadline by " + saved.getBreachMinutes() + " minutes."
+                        : "Work order completed within the execution SLA.",
+                saved.getSlaDueAt() == null ? null : saved.getSlaDueAt().toString(),
+                saved.getCompletedAt() == null ? null : saved.getCompletedAt().toString(),
                 actor
         );
 
@@ -435,7 +480,7 @@ public class WorkOrderService {
             throw new NotFoundException("TECH not allowed to start this work order.");
         }
 
-        if (wo.getStatus() == WorkOrderStatus.IN_PROGRESS) {
+        if (wo.getStatus() == WorkOrderStatus.WORK_STARTED || wo.getStatus() == WorkOrderStatus.IN_PROGRESS) {
             return toDto(wo);
         }
 
@@ -447,12 +492,18 @@ public class WorkOrderService {
             throw new BusinessRuleException("Cancelled work orders cannot be started.");
         }
 
-        if (wo.getStatus() != WorkOrderStatus.OPEN && wo.getStatus() != WorkOrderStatus.ASSIGNED) {
-            throw new BusinessRuleException("Only OPEN or ASSIGNED work orders can be started.");
+        if (wo.getStatus() != WorkOrderStatus.ASSIGNED && wo.getStatus() != WorkOrderStatus.EN_ROUTE
+                && wo.getStatus() != WorkOrderStatus.ARRIVED) {
+            throw new BusinessRuleException("Travel or an assigned work order is required before work can start.");
         }
 
         WorkOrderStatus previousStatus = wo.getStatus();
-        wo.setStatus(WorkOrderStatus.IN_PROGRESS);
+        Instant now = Instant.now();
+        if (wo.getSlaClockStartedAt() == null) {
+            startExecutionClock(wo, now);
+        }
+        wo.setWorkStartedAt(now);
+        wo.setStatus(WorkOrderStatus.WORK_STARTED);
 
         WorkOrderEntity saved = repo.save(wo);
         eventService.logStarted(saved, previousStatus);
@@ -463,6 +514,88 @@ public class WorkOrderService {
         );
 
         return toDto(saved);
+    }
+
+    @Transactional
+    public WorkOrderDto startTravel(Long id, Long userId) {
+        WorkOrderEntity wo = assignedWorkOrder(id, userId, "start travel for");
+        if (wo.getStatus() == WorkOrderStatus.EN_ROUTE) {
+            return toDto(wo);
+        }
+        if (wo.getStatus() != WorkOrderStatus.ASSIGNED) {
+            throw new BusinessRuleException("Only ASSIGNED work orders can start travel.");
+        }
+        WorkOrderStatus previousStatus = wo.getStatus();
+        Instant now = Instant.now();
+        wo.setEnRouteAt(now);
+        startExecutionClock(wo, now);
+        wo.setStatus(WorkOrderStatus.EN_ROUTE);
+        WorkOrderEntity saved = repo.save(wo);
+        recordLifecycleEvent(saved, WorkOrderEventType.TRAVEL_STARTED, "Technician started travel.", previousStatus);
+        realtimeEventPublisher.publishWorkOrderStarted(saved, previousStatus.name());
+        return toDto(saved);
+    }
+
+    @Transactional
+    public WorkOrderDto arriveOnsite(Long id, Long userId) {
+        WorkOrderEntity wo = assignedWorkOrder(id, userId, "mark arrival for");
+        if (wo.getStatus() == WorkOrderStatus.ARRIVED) {
+            return toDto(wo);
+        }
+        if (wo.getStatus() != WorkOrderStatus.EN_ROUTE) {
+            throw new BusinessRuleException("Travel must be started before arrival can be recorded.");
+        }
+        WorkOrderStatus previousStatus = wo.getStatus();
+        wo.setArrivedAt(Instant.now());
+        wo.setStatus(WorkOrderStatus.ARRIVED);
+        WorkOrderEntity saved = repo.save(wo);
+        recordLifecycleEvent(saved, WorkOrderEventType.ARRIVED_ONSITE, "Technician arrived onsite.", previousStatus);
+        realtimeEventPublisher.publishWorkOrderStarted(saved, previousStatus.name());
+        return toDto(saved);
+    }
+
+    private WorkOrderEntity assignedWorkOrder(Long id, Long userId, String action) {
+        Long technicianId = technicianRepo.findByUserId(userId)
+                .map(TechnicianEntity::getId)
+                .orElseThrow(() -> new NotFoundException("Technician profile not found for this user."));
+        WorkOrderEntity wo = repo.findById(id)
+                .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
+        if (!Objects.equals(wo.getAssignedTechId(), technicianId)) {
+            throw new NotFoundException("TECH not allowed to " + action + " this work order.");
+        }
+        return wo;
+    }
+
+    private void startExecutionClock(WorkOrderEntity wo, Instant startedAt) {
+        int duration = wo.getSlaDurationMinutes() != null
+                ? wo.getSlaDurationMinutes()
+                : SlaClock.durationForPriority(wo.getPriority());
+        wo.setSlaDurationMinutes(duration);
+        wo.setSlaClockStartedAt(startedAt);
+        wo.setSlaDueAt(startedAt.plusSeconds(duration * 60L));
+        wo.setSlaBreached(false);
+        wo.setActualCompletionMinutes(null);
+        wo.setBreachMinutes(null);
+    }
+
+    private void clearExecutionClock(WorkOrderEntity wo) {
+        wo.setEnRouteAt(null);
+        wo.setArrivedAt(null);
+        wo.setWorkStartedAt(null);
+        wo.setSlaClockStartedAt(null);
+        wo.setSlaDueAt(null);
+        wo.setSlaBreached(false);
+        wo.setActualCompletionMinutes(null);
+        wo.setBreachMinutes(null);
+    }
+
+    private void recordLifecycleEvent(WorkOrderEntity wo, WorkOrderEventType type, String message,
+                                      WorkOrderStatus previousStatus) {
+        String actor = getCurrentActor();
+        eventService.recordEvent(wo, type, message, null, wo.getStatus().name(), actor);
+        eventService.recordEvent(wo, WorkOrderEventType.STATUS_CHANGED,
+                "Status changed to " + wo.getStatus().name() + ".",
+                previousStatus.name(), wo.getStatus().name(), actor);
     }
 
 
@@ -479,7 +612,8 @@ public class WorkOrderService {
             throw new NotFoundException("TECH not allowed to release this work order.");
         }
 
-        if (wo.getStatus() == WorkOrderStatus.IN_PROGRESS) {
+        if (wo.getStatus() == WorkOrderStatus.IN_PROGRESS || wo.getStatus() == WorkOrderStatus.WORK_STARTED
+                || wo.getStatus() == WorkOrderStatus.EN_ROUTE || wo.getStatus() == WorkOrderStatus.ARRIVED) {
             throw new BusinessRuleException("Started work orders cannot be returned to OPEN from this screen.");
         }
 
@@ -495,6 +629,8 @@ public class WorkOrderService {
         Long previousTechId = wo.getAssignedTechId();
 
         wo.setAssignedTechId(null);
+        wo.setAssignedAt(null);
+        clearExecutionClock(wo);
         wo.setStatus(WorkOrderStatus.OPEN);
 
         WorkOrderEntity saved = repo.save(wo);
@@ -618,8 +754,8 @@ public class WorkOrderService {
             throw new BusinessRuleException("Work order has already been completed");
         }
 
-        if (workOrder.getStatus() != WorkOrderStatus.IN_PROGRESS) {
-            throw new BusinessRuleException("Only IN_PROGRESS work orders can be completed");
+        if (workOrder.getStatus() != WorkOrderStatus.WORK_STARTED && workOrder.getStatus() != WorkOrderStatus.IN_PROGRESS) {
+            throw new BusinessRuleException("Only WORK_STARTED work orders can be completed");
         }
 
         WorkOrderCompletionEntity completion = new WorkOrderCompletionEntity();
@@ -710,6 +846,8 @@ public WorkOrderDto reopenWorkOrder(Long id, String reason) {
     wo.setCompletionNotes(null);
     wo.setSignatureUrl(null);
     wo.setAssignedTechId(null);
+    wo.setAssignedAt(null);
+    clearExecutionClock(wo);
 
     workOrderCompletionRepository.findByWorkOrderId(id)
             .ifPresent(workOrderCompletionRepository::delete);
