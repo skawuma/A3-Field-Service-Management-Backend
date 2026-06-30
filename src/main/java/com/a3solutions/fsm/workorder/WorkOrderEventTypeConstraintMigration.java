@@ -28,6 +28,8 @@ public class WorkOrderEventTypeConstraintMigration implements ApplicationRunner 
                 .map(name -> "'" + name + "'")
                 .collect(Collectors.joining(", "));
 
+        jdbcTemplate.execute("ALTER TABLE work_order_events DROP CONSTRAINT IF EXISTS chk_work_order_events_event_type");
+        jdbcTemplate.execute("ALTER TABLE work_order_events DROP CONSTRAINT IF EXISTS chk_work_order_events_type");
         jdbcTemplate.execute("ALTER TABLE work_order_events DROP CONSTRAINT IF EXISTS work_order_events_event_type_check");
         jdbcTemplate.execute("""
                 ALTER TABLE work_order_events
