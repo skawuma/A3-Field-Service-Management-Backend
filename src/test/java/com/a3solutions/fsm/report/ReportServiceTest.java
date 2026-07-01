@@ -91,6 +91,24 @@ class ReportServiceTest {
         )).isInstanceOf(BadRequestException.class);
     }
 
+    @Test
+    void ignoresCompletedWorkOrdersWithoutCompletionTimingData() {
+        Instant created = Instant.parse("2026-06-10T12:00:00Z");
+        WorkOrderEntity completedWithoutTiming = workOrder(4L, created, WorkOrderStatus.COMPLETED, false);
+        completedWithoutTiming.setAssignedTechId(7L);
+
+        when(workOrderRepository.findAll()).thenReturn(List.of(completedWithoutTiming));
+        when(technicianRepository.findAll()).thenReturn(List.of());
+
+        OperationsReport report = reportService.getOperationsReport(
+                LocalDate.of(2026, 6, 1),
+                LocalDate.of(2026, 6, 30)
+        );
+
+        assertThat(report.technicianPerformance()).singleElement().satisfies(performance ->
+                assertThat(performance.averageCompletionMinutes()).isNull());
+    }
+
     private WorkOrderEntity workOrder(Long id, Instant createdAt, WorkOrderStatus status, boolean breached) {
         return WorkOrderEntity.builder()
                 .id(id)

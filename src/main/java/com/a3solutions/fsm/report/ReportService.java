@@ -230,12 +230,17 @@ public class ReportService {
 
     private Long averageCompletionDuration(List<WorkOrderEntity> workOrders) {
         List<Long> durations = workOrders.stream()
-                .map(workOrder -> workOrder.getActualCompletionMinutes() == null
-                        ? durationMinutes(workOrder.getSlaClockStartedAt(), workOrder.getCompletedAt())
-                        : workOrder.getActualCompletionMinutes().longValue())
+                .map(this::completionDurationMinutes)
                 .filter(Objects::nonNull)
                 .toList();
         return roundedAverage(durations);
+    }
+
+    private Long completionDurationMinutes(WorkOrderEntity workOrder) {
+        if (workOrder.getActualCompletionMinutes() != null) {
+            return workOrder.getActualCompletionMinutes().longValue();
+        }
+        return durationMinutes(workOrder.getSlaClockStartedAt(), workOrder.getCompletedAt());
     }
 
     private Long roundedAverage(List<Long> durations) {
