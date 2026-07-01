@@ -4,6 +4,7 @@ on:
   push:
     branches:
       - main
+      - sprint-12-product-polish
       - sprint-11-sla-intelligence
       - sprint-10-demo-readiness
       - sprint-9-production-devops
@@ -11,6 +12,7 @@ on:
   pull_request:
     branches:
       - main
+      - sprint-12-product-polish
       - sprint-11-sla-intelligence
       - sprint-10-demo-readiness
       - sprint-9-production-devops
