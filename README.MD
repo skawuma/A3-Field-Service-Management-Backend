@@ -33,6 +33,23 @@ This backend is a strong project talking point because it demonstrates more than
 - dashboard endpoints return frontend-friendly data instead of leaking raw database structure
 - the design already hints at future service boundaries without over-engineering the current system
 
+## Sprint 12 Reporting API
+
+Sprint 12 adds an export-ready operational reporting boundary without duplicating dashboard business logic in the browser.
+
+`GET /api/reports/operations?from=YYYY-MM-DD&to=YYYY-MM-DD`
+
+The endpoint is restricted to `ADMIN` and `DISPATCH` and returns:
+
+- operational totals for active, completed, cancelled, and breached work
+- SLA compliance and completed-within-SLA totals
+- average dispatch, response, and resolution clocks
+- status and priority chart buckets
+- technician completion and SLA scorecards
+- work-order rows shaped consistently for CSV and PDF exports
+
+Report periods are inclusive and limited to 366 days. The Angular Reports workspace uses this single response for on-screen analysis and both export formats.
+
 ## What This Service Does
 
 ### Core Business Responsibilities
