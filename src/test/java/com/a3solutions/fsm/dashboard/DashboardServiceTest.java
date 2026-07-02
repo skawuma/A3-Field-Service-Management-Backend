@@ -30,6 +30,7 @@ import java.util.Map;
 import java.util.stream.Collectors;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.when;
@@ -219,6 +220,48 @@ class DashboardServiceTest {
         assertEquals(4L, workload.getFirst().inProgressAssignedWorkOrders());
         assertEquals(1L, workload.getFirst().dueTodayAssignedWorkOrders());
         assertEquals(3L, workload.getFirst().overdueAssignedWorkOrders());
+    }
+
+    @Test
+    void getSlaSummaryHandlesOverdueUnassignedWorkOrders() {
+        LocalDate today = LocalDate.now();
+        WorkOrderEntity unassigned = WorkOrderEntity.builder()
+                .id(108L)
+                .clientName("Beacon Hill Dental")
+                .description("Wireless access point offline")
+                .scheduledDate(today.minusDays(2))
+                .status(WorkOrderStatus.OPEN)
+                .priority("HIGH")
+                .assignedTechId(null)
+                .build();
+
+        when(workOrderRepository.countByScheduledDateAndStatusNotIn(
+                any(LocalDate.class),
+                any(Collection.class)
+        )).thenReturn(0L);
+        when(workOrderRepository.countByScheduledDateBeforeAndStatusNotIn(
+                any(LocalDate.class),
+                any(Collection.class)
+        )).thenReturn(1L);
+        when(workOrderRepository.findByScheduledDateBeforeAndStatusInOrderByScheduledDateAscIdAsc(
+                any(LocalDate.class),
+                any(List.class),
+                any(Pageable.class)
+        )).thenReturn(List.of(unassigned));
+        when(workOrderRepository.findByScheduledDateAndStatusInOrderByIdDesc(
+                any(LocalDate.class),
+                any(List.class),
+                any(Pageable.class)
+        )).thenReturn(List.of());
+
+        DashboardSlaSummary summary = dashboardService.getSlaSummary();
+
+        assertEquals(1L, summary.overdueCount());
+        assertEquals(1, summary.overdueItems().size());
+        assertEquals(108L, summary.overdueItems().getFirst().workOrderId());
+        assertEquals(2L, summary.overdueItems().getFirst().daysLate());
+        assertNull(summary.overdueItems().getFirst().assignedTechId());
+        assertNull(summary.overdueItems().getFirst().assignedTechName());
     }
 
     @Test

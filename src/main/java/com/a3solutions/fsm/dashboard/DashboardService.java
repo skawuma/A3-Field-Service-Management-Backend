@@ -658,7 +658,9 @@ public class DashboardService {
         }
 
         Long assignedTechId = workOrder.getAssignedTechId();
-        String assignedTechName = technicianNames.get(assignedTechId);
+        String assignedTechName = assignedTechId == null
+                ? null
+                : technicianNames.get(assignedTechId);
 
         return new DashboardSlaWorkOrderItem(
                 workOrderId,
