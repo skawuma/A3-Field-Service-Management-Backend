@@ -5,6 +5,7 @@ import com.a3solutions.fsm.realtime.RealtimeEventPublisher;
 import com.a3solutions.fsm.storage.StorageService;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
+import com.a3solutions.fsm.timesheet.TimesheetService;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionEntity;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRequest;
 import com.a3solutions.fsm.workordercompletion.WorkOrderCompletionRepository;
@@ -49,6 +50,9 @@ class WorkOrderServiceTest {
 
     @Mock
     private RealtimeEventPublisher realtimeEventPublisher;
+
+    @Mock
+    private TimesheetService timesheetService;
 
     @InjectMocks
     private WorkOrderService workOrderService;
@@ -653,6 +657,7 @@ class WorkOrderServiceTest {
                 eq("COMPLETED"),
                 eq("debs@a3fsm.com")
         );
+        verify(timesheetService).autoAddCompletedWorkOrder(workOrder, technician);
     }
 
     @Test

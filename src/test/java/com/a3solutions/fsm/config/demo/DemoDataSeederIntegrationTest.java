@@ -3,6 +3,9 @@ package com.a3solutions.fsm.config.demo;
 import com.a3solutions.fsm.auth.UserRepository;
 import com.a3solutions.fsm.security.Role;
 import com.a3solutions.fsm.technician.TechnicianRepository;
+import com.a3solutions.fsm.timesheet.TimesheetEntryRepository;
+import com.a3solutions.fsm.timesheet.TimesheetRepository;
+import com.a3solutions.fsm.timesheet.TimesheetStatus;
 import com.a3solutions.fsm.workorder.WorkOrderEventRepository;
 import com.a3solutions.fsm.workorder.WorkOrderRepository;
 import com.a3solutions.fsm.workorder.WorkOrderStatus;
@@ -39,6 +42,12 @@ class DemoDataSeederIntegrationTest {
     private WorkOrderCompletionRepository completionRepository;
 
     @Autowired
+    private TimesheetRepository timesheetRepository;
+
+    @Autowired
+    private TimesheetEntryRepository timesheetEntryRepository;
+
+    @Autowired
     private PasswordEncoder passwordEncoder;
 
     @Test
@@ -48,6 +57,9 @@ class DemoDataSeederIntegrationTest {
         assertThat(workOrderRepository.count()).isEqualTo(8);
         assertThat(eventRepository.count()).isEqualTo(20);
         assertThat(completionRepository.count()).isEqualTo(2);
+        assertThat(timesheetRepository.count()).isEqualTo(1);
+        assertThat(timesheetEntryRepository.count()).isEqualTo(2);
+        assertThat(timesheetRepository.findAll().getFirst().getStatus()).isEqualTo(TimesheetStatus.DRAFT);
 
         assertThat(workOrderRepository.countByStatus(WorkOrderStatus.OPEN)).isEqualTo(2);
         assertThat(workOrderRepository.countByStatus(WorkOrderStatus.ASSIGNED)).isEqualTo(2);
@@ -76,6 +88,8 @@ class DemoDataSeederIntegrationTest {
         long workOrders = workOrderRepository.count();
         long events = eventRepository.count();
         long completions = completionRepository.count();
+        long timesheets = timesheetRepository.count();
+        long timesheetEntries = timesheetEntryRepository.count();
 
         demoDataSeeder.run(new DefaultApplicationArguments(new String[0]));
 
@@ -84,5 +98,7 @@ class DemoDataSeederIntegrationTest {
         assertThat(workOrderRepository.count()).isEqualTo(workOrders);
         assertThat(eventRepository.count()).isEqualTo(events);
         assertThat(completionRepository.count()).isEqualTo(completions);
+        assertThat(timesheetRepository.count()).isEqualTo(timesheets);
+        assertThat(timesheetEntryRepository.count()).isEqualTo(timesheetEntries);
     }
 }

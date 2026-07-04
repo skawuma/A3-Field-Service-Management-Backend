@@ -63,6 +63,8 @@ app:
   metrics:
     refresh-delay-ms: ${APP_METRICS_REFRESH_DELAY_MS:30000}
     refresh-initial-delay-ms: ${APP_METRICS_REFRESH_INITIAL_DELAY_MS:10000}
+  timesheets:
+    zone-id: ${APP_TIMESHEETS_ZONE_ID:America/New_York}
 
 management:
   endpoints:

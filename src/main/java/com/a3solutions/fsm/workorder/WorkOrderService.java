@@ -18,6 +18,7 @@ import org.springframework.data.domain.*;
 import org.springframework.data.jpa.domain.Specification;
 import org.springframework.stereotype.Service;
 import com.a3solutions.fsm.storage.StorageService;
+import com.a3solutions.fsm.timesheet.TimesheetService;
 
 import java.time.Instant;
 import java.time.LocalDateTime;
@@ -54,6 +55,7 @@ public class WorkOrderService {
     private final WorkOrderEventService eventService;
     private final WorkOrderCompletionRepository workOrderCompletionRepository;
     private final RealtimeEventPublisher realtimeEventPublisher;
+    private final TimesheetService timesheetService;
 
     public WorkOrderService(
             WorkOrderRepository repo,
@@ -61,7 +63,8 @@ public class WorkOrderService {
             WorkOrderEventService eventService,
             StorageService storageService,
             WorkOrderCompletionRepository workOrderCompletionRepository,
-            RealtimeEventPublisher realtimeEventPublisher
+            RealtimeEventPublisher realtimeEventPublisher,
+            TimesheetService timesheetService
             ) {
         this.repo = repo;
         this.technicianRepo = technicianRepo;
@@ -69,6 +72,7 @@ public class WorkOrderService {
         this.storageService = storageService;
         this.workOrderCompletionRepository = workOrderCompletionRepository;
         this.realtimeEventPublisher = realtimeEventPublisher;
+        this.timesheetService = timesheetService;
     }
 
     // =====================================================================
@@ -393,9 +397,9 @@ public class WorkOrderService {
     @Transactional
     public WorkOrderDto completeWorkOrder(Long id, CompleteWorkOrderRequest req, Long userId) {
 
-        Long technicianId = technicianRepo.findByUserId(userId)
-                .map(TechnicianEntity::getId)
+        TechnicianEntity technician = technicianRepo.findByUserId(userId)
                 .orElseThrow(() -> new NotFoundException("Technician profile not found for this user."));
+        Long technicianId = technician.getId();
 
         WorkOrderEntity wo = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
@@ -459,6 +463,8 @@ public class WorkOrderService {
                 saved.getCompletedAt() == null ? null : saved.getCompletedAt().toString(),
                 actor
         );
+
+        timesheetService.autoAddCompletedWorkOrder(saved, technician);
 
         // Sprint 8 realtime event
         realtimeEventPublisher.publishWorkOrderCompleted(saved);
