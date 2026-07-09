@@ -214,6 +214,39 @@ class TimesheetServiceTest {
     }
 
     @Test
+    void approvedTimesheetsCannotBeEditedByTechnician() {
+        TimesheetEntryEntity entry = TimesheetEntryEntity.builder()
+                .id(30L)
+                .timesheetId(10L)
+                .build();
+        when(entryRepository.findById(30L)).thenReturn(Optional.of(entry));
+        when(timesheetRepository.findById(10L)).thenReturn(Optional.of(
+                timesheet(10L, 7L, TimesheetStatus.APPROVED)
+        ));
+        when(technicianRepository.findByUserId(41L)).thenReturn(Optional.of(
+                technician(7L, 41L, "Samuel", "Kawuma")
+        ));
+
+        BusinessRuleException exception = assertThrows(
+                BusinessRuleException.class,
+                () -> timesheetService.updateEntry(
+                        30L,
+                        new TimesheetEntryUpdateRequest(
+                                BigDecimal.TEN,
+                                LocalTime.of(8, 0),
+                                null,
+                                null,
+                                LocalTime.of(16, 0),
+                                "Attempted locked edit"
+                        ),
+                        41L
+                )
+        );
+        assertEquals("Only draft or rejected timesheets can be edited.", exception.getMessage());
+        verify(entryRepository, never()).save(any());
+    }
+
+    @Test
     void technicianCanSubmitOwnValidDraftAndReviewerCanApproveIt() {
         TechnicianEntity technician = technician(7L, 41L, "Samuel", "Kawuma");
         TimesheetEntity draft = timesheet(10L, 7L, TimesheetStatus.DRAFT);
@@ -243,6 +276,20 @@ class TimesheetServiceTest {
 
         TimesheetResponse approved = timesheetService.approve(10L, Role.DISPATCH);
         assertEquals(TimesheetStatus.APPROVED, approved.status());
+    }
+
+    @Test
+    void reviewerCanRejectSubmittedTimesheetForCorrection() {
+        TimesheetEntity submitted = timesheet(10L, 7L, TimesheetStatus.SUBMITTED);
+        when(timesheetRepository.findById(10L)).thenReturn(Optional.of(submitted));
+        when(timesheetRepository.save(any(TimesheetEntity.class)))
+                .thenAnswer(invocation -> invocation.getArgument(0));
+        when(entryRepository.findByTimesheetIdOrderByWorkDateAscIdAsc(10L)).thenReturn(List.of());
+
+        TimesheetResponse rejected = timesheetService.reject(10L, Role.ADMIN);
+
+        assertEquals(TimesheetStatus.REJECTED, rejected.status());
+        assertNull(rejected.approvedAt());
     }
 
     @Test
