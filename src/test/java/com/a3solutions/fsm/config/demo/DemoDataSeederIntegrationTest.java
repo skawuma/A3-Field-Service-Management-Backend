@@ -17,11 +17,17 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.test.context.ActiveProfiles;
 
+import java.time.DayOfWeek;
+import java.time.ZoneId;
+import java.time.temporal.TemporalAdjusters;
+
 import static org.assertj.core.api.Assertions.assertThat;
 
 @SpringBootTest
 @ActiveProfiles("demo")
 class DemoDataSeederIntegrationTest {
+
+    private static final ZoneId PAYROLL_ZONE = ZoneId.of("America/New_York");
 
     @Autowired
     private DemoDataSeeder demoDataSeeder;
@@ -57,9 +63,22 @@ class DemoDataSeederIntegrationTest {
         assertThat(workOrderRepository.count()).isEqualTo(8);
         assertThat(eventRepository.count()).isEqualTo(20);
         assertThat(completionRepository.count()).isEqualTo(2);
-        assertThat(timesheetRepository.count()).isEqualTo(1);
-        assertThat(timesheetEntryRepository.count()).isEqualTo(2);
-        assertThat(timesheetRepository.findAll().getFirst().getStatus()).isEqualTo(TimesheetStatus.DRAFT);
+
+        var completedDemoWorkOrders = workOrderRepository.findAll().stream()
+                .filter(workOrder -> workOrder.getStatus() == WorkOrderStatus.COMPLETED)
+                .filter(workOrder -> workOrder.getAssignedTechId() != null)
+                .filter(workOrder -> workOrder.getCompletedAt() != null)
+                .toList();
+        long expectedTimesheetCount = completedDemoWorkOrders.stream()
+                .map(workOrder -> workOrder.getAssignedTechId() + ":" + workOrder.getCompletedAt()
+                        .atZone(PAYROLL_ZONE)
+                        .toLocalDate()
+                        .with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY)))
+                .distinct()
+                .count();
+        assertThat(timesheetRepository.count()).isEqualTo(expectedTimesheetCount);
+        assertThat(timesheetEntryRepository.count()).isEqualTo(completedDemoWorkOrders.size());
+        assertThat(timesheetRepository.findAll()).allMatch(timesheet -> timesheet.getStatus() == TimesheetStatus.DRAFT);
 
         assertThat(workOrderRepository.countByStatus(WorkOrderStatus.OPEN)).isEqualTo(2);
         assertThat(workOrderRepository.countByStatus(WorkOrderStatus.ASSIGNED)).isEqualTo(2);
