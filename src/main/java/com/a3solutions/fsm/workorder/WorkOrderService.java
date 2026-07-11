@@ -1,6 +1,7 @@
 package com.a3solutions.fsm.workorder;
 
 import com.a3solutions.fsm.common.PageResponse;
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.exceptions.BusinessRuleException;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import com.a3solutions.fsm.realtime.RealtimeEventPublisher;
@@ -319,7 +320,7 @@ public class WorkOrderService {
     }
 
     private Pageable buildPageable(int page, int size, String sort) {
-        if (sort == null || sort.isBlank()) {
+        if (TextUtils.isBlank(sort)) {
             return PageRequest.of(page, size, Sort.by("id").descending());
         }
         String[] parts = sort.split(",");
@@ -416,7 +417,7 @@ public class WorkOrderService {
             throw new BusinessRuleException("Structured completion report is required before sign-off.");
         }
 
-        if (req.signatureDataUrl() == null || req.signatureDataUrl().isBlank()) {
+        if (TextUtils.isBlank(req.signatureDataUrl())) {
             throw new BusinessRuleException("Signature is required.");
         }
 
@@ -641,14 +642,14 @@ public class WorkOrderService {
 
         WorkOrderEntity saved = repo.save(wo);
         String actor = getCurrentActor();
-        String technicianName = technician.getFullName() != null && !technician.getFullName().isBlank()
+        String technicianName = TextUtils.hasText(technician.getFullName())
                 ? technician.getFullName()
                 : ("Tech#" + technician.getId());
 
         eventService.recordEvent(
                 saved,
                 WorkOrderEventType.UNASSIGNED_TECHNICIAN,
-                reason == null || reason.isBlank()
+                TextUtils.isBlank(reason)
                         ? "Technician " + technicianName + " released this work order so it can be reassigned."
                         : "Technician " + technicianName + " released this work order so it can be reassigned. Reason: " + reason,
                 previousTechId == null ? null : previousTechId.toString(),
@@ -712,7 +713,7 @@ public class WorkOrderService {
         WorkOrderEntity wo = repo.findById(id)
                 .orElseThrow(() -> new NotFoundException("Work order not found: " + id));
 
-        if (wo.getSignatureUrl() == null || wo.getSignatureUrl().isBlank()) {
+        if (TextUtils.isBlank(wo.getSignatureUrl())) {
             throw new NotFoundException("Signature not found for work order: " + id);
         }
 
@@ -807,7 +808,7 @@ public class WorkOrderService {
 
     private String getCurrentActor() {
         Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+        if (auth == null || TextUtils.isBlank(auth.getName())) {
             return "SYSTEM";
         }
         return auth.getName();
@@ -861,7 +862,7 @@ public WorkOrderDto reopenWorkOrder(Long id, String reason) {
     WorkOrderEntity saved = repo.save(wo);
     String actor = getCurrentActor();
 
-    if (previousSignatureUrl != null && !previousSignatureUrl.isBlank()) {
+    if (TextUtils.hasText(previousSignatureUrl)) {
         try {
             storageService.delete(previousSignatureUrl);
         } catch (RuntimeException ex) {
@@ -895,8 +896,8 @@ public WorkOrderDto reopenWorkOrder(Long id, String reason) {
             saved,
             previousTechId,
             WorkOrderStatus.COMPLETED.name(),
-            previousSignatureUrl != null && !previousSignatureUrl.isBlank(),
-            reason != null && !reason.isBlank(),
+            TextUtils.hasText(previousSignatureUrl),
+            TextUtils.hasText(reason),
             reason
     );
 

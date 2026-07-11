@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.storage;
 
+import com.a3solutions.fsm.common.TextUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -105,8 +106,9 @@ public class LocalStorageService implements StorageService {
     }
 
     private String extractFilename(String storedPath) {
-        if (storedPath == null || storedPath.isBlank()) {
-            throw new RuntimeException("Stored path is empty.");
+        if (TextUtils.isBlank(storedPath)) {
+            log.error("Invalid stored path: {}", storedPath);
+            throw new IllegalArgumentException("Stored path is null, blank, or empty.");
         }
 
         // Example input: /files/1711152233445_invoice.pdf

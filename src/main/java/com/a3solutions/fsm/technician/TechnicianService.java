@@ -2,6 +2,7 @@ package com.a3solutions.fsm.technician;
 
 import com.a3solutions.fsm.auth.UserRepository;
 import com.a3solutions.fsm.common.PageResponse;
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.config.demo.DemoModeGuard;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import jakarta.transaction.Transactional;
@@ -58,7 +59,7 @@ public class TechnicianService {
 
     private Pageable buildPageable(int page, int size, String sort) {
 
-        if (sort == null || sort.isBlank()) {
+        if (TextUtils.isBlank(sort)) {
             return PageRequest.of(page, size, Sort.by("lastName").ascending());
         }
 

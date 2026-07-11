@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.timesheet;
 
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.exceptions.BusinessRuleException;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import com.a3solutions.fsm.security.Role;
@@ -167,8 +168,7 @@ public class TimesheetService {
                 && timesheet.getStatus() != TimesheetStatus.REJECTED) {
             throw new BusinessRuleException("Only draft or rejected timesheets can be submitted.");
         }
-        if (request == null || request.technicianSignatureText() == null
-                || request.technicianSignatureText().isBlank()) {
+        if (request == null || TextUtils.isBlank(request.technicianSignatureText())) {
             throw new BusinessRuleException("Technician signature is required.");
         }
 
@@ -217,7 +217,7 @@ public class TimesheetService {
 
         String locations = entries.stream()
                 .map(this::formatLocation)
-                .filter(value -> !value.isBlank())
+                .filter(TextUtils::hasText)
                 .distinct()
                 .collect(Collectors.joining(" | "));
 
@@ -312,7 +312,7 @@ public class TimesheetService {
     }
 
     private void validateEntryForSubmission(TimesheetEntryEntity entry) {
-        if (entry.getWorkDate() == null || entry.getClientName() == null || entry.getClientName().isBlank()) {
+        if (entry.getWorkDate() == null || TextUtils.isBlank(entry.getClientName())) {
             throw new BusinessRuleException("Every timesheet entry requires a work date and client name.");
         }
         if (entry.getMiles() != null && entry.getMiles().compareTo(BigDecimal.ZERO) < 0) {
@@ -422,12 +422,12 @@ public class TimesheetService {
     }
 
     private SiteParts parseSite(String address) {
-        if (address == null || address.isBlank()) {
+        if (TextUtils.isBlank(address)) {
             return new SiteParts(null, null, null, null);
         }
         List<String> parts = Arrays.stream(address.split(","))
                 .map(String::trim)
-                .filter(part -> !part.isBlank())
+                .filter(TextUtils::hasText)
                 .toList();
         if (parts.size() < 3) {
             return new SiteParts(address.trim(), null, null, null);
@@ -449,9 +449,9 @@ public class TimesheetService {
         if (entry.getCity() != null) parts.add(entry.getCity());
         String stateZip = Arrays.asList(entry.getState(), entry.getZip()).stream()
                 .filter(Objects::nonNull)
-                .filter(value -> !value.isBlank())
+                .filter(TextUtils::hasText)
                 .collect(Collectors.joining(" "));
-        if (!stateZip.isBlank()) parts.add(stateZip);
+        if (TextUtils.hasText(stateZip)) parts.add(stateZip);
         return String.join(", ", parts);
     }
 
@@ -476,7 +476,7 @@ public class TimesheetService {
     }
 
     private String trimToNull(String value) {
-        return value == null || value.isBlank() ? null : value.trim();
+        return TextUtils.trimToNull(value);
     }
 
     private Instant firstNonNull(Instant first, Instant second) {

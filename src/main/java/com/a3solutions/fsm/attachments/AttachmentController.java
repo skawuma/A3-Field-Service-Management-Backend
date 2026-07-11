@@ -2,6 +2,7 @@ package com.a3solutions.fsm.attachments;
 
 import com.a3solutions.fsm.auth.UserDetailsImpl;
 import com.a3solutions.fsm.common.MessageResponse;
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.exceptions.ApiErrorResponse;
 import com.a3solutions.fsm.exceptions.BadRequestException;
 import com.a3solutions.fsm.exceptions.BusinessRuleException;
@@ -193,14 +194,14 @@ public class AttachmentController {
     }
 
     private String resolveActor(Authentication auth) {
-        if (auth == null || auth.getName() == null || auth.getName().isBlank()) {
+        if (auth == null || TextUtils.isBlank(auth.getName())) {
             return "SYSTEM";
         }
         return auth.getName();
     }
 
     private String resolveContentType(AttachmentEntity attachment) {
-        if (attachment.getContentType() != null && !attachment.getContentType().isBlank()) {
+        if (TextUtils.hasText(attachment.getContentType())) {
             return attachment.getContentType();
         }
 

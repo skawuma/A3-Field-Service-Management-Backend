@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.security;
 
+import com.a3solutions.fsm.common.TextUtils;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -109,7 +110,7 @@ public CorsFilter corsFilter() {
     config.setAllowedOrigins(
             Arrays.stream(allowedOrigins.split(","))
                     .map(String::trim)
-                    .filter(origin -> !origin.isBlank())
+                    .filter(TextUtils::hasText)
                     .toList()
     );
 

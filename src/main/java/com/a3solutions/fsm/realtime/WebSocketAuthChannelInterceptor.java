@@ -1,6 +1,7 @@
 package com.a3solutions.fsm.realtime;
 
 import com.a3solutions.fsm.auth.CustomUserDetailsService;
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.security.JwtService;
 import org.springframework.messaging.Message;
 import org.springframework.messaging.MessageChannel;
@@ -88,12 +89,12 @@ public class WebSocketAuthChannelInterceptor implements ChannelInterceptor {
 
     private String resolveAuthorizationHeader(StompHeaderAccessor accessor) {
         String header = accessor.getFirstNativeHeader("Authorization");
-        if (header != null && !header.isBlank()) {
+        if (TextUtils.hasText(header)) {
             return header;
         }
 
         header = accessor.getFirstNativeHeader("authorization");
-        if (header != null && !header.isBlank()) {
+        if (TextUtils.hasText(header)) {
             return header;
         }
 

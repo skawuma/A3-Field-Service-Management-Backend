@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.workorder;
 
+import com.a3solutions.fsm.common.TextUtils;
 import org.springframework.data.jpa.domain.Specification;
 
 /**
@@ -15,7 +16,7 @@ public class WorkOrderSpecification {
     // ============================================================
     public static Specification<WorkOrderEntity> hasSearch(String search) {
         return (root, query, cb) -> {
-            if (search == null || search.isBlank()) {
+            if (TextUtils.isBlank(search)) {
                 return cb.conjunction(); // no filter
             }
 
@@ -35,7 +36,7 @@ public class WorkOrderSpecification {
     // ============================================================
     public static Specification<WorkOrderEntity> hasPriority(String priority) {
         return (root, query, cb) -> {
-            if (priority == null || priority.isBlank()) {
+            if (TextUtils.isBlank(priority)) {
                 return cb.conjunction();
             }
 
@@ -50,7 +51,7 @@ public class WorkOrderSpecification {
         return (root, query, cb) -> {
 
             // Ignore missing or invalid status filters
-            if (status == null || status.isBlank() || status.equalsIgnoreCase("null")) {
+            if (TextUtils.isBlank(status) || status.equalsIgnoreCase("null")) {
                 return cb.conjunction();
             }
 

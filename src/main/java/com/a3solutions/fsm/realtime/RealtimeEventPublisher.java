@@ -1,6 +1,7 @@
 package com.a3solutions.fsm.realtime;
 
 import com.a3solutions.fsm.auth.UserRepository;
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.observability.FsmOperationalMetrics;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
@@ -506,7 +507,7 @@ public class RealtimeEventPublisher {
         }
 
         String trimmed = value.trim();
-        return trimmed.isBlank() ? null : trimmed;
+        return TextUtils.isBlank(trimmed) ? null : trimmed;
     }
 
     private String formatStatusLabel(WorkOrderStatus status) {

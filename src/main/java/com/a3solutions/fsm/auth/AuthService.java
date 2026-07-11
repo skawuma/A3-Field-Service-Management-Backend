@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.auth;
 
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.exceptions.BadRequestException;
 import com.a3solutions.fsm.exceptions.NotFoundException;
 import com.a3solutions.fsm.security.JwtService;
@@ -84,8 +85,7 @@ public class AuthService {
             throw new NotFoundException("Admin bootstrap is not enabled.");
         }
 
-        if (bootstrapAdminEmail == null || bootstrapAdminEmail.isBlank() ||
-                bootstrapAdminPassword == null || bootstrapAdminPassword.isBlank()) {
+        if (TextUtils.isBlank(bootstrapAdminEmail) || TextUtils.isBlank(bootstrapAdminPassword)) {
             throw new BadRequestException("Bootstrap admin credentials are not configured.");
         }
 

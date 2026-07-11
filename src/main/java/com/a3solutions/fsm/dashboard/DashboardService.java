@@ -1,6 +1,7 @@
 package com.a3solutions.fsm.dashboard;
 
 import com.a3solutions.fsm.auth.UserRepository;
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.realtime.RealtimeEventPublisher;
 import com.a3solutions.fsm.technician.TechnicianRepository;
 import com.a3solutions.fsm.workorder.WorkOrderEntity;
@@ -308,7 +309,7 @@ public class DashboardService {
     }
 
     private String extractTechnicianName(String message) {
-        if (message == null || message.isBlank()) {
+        if (TextUtils.isBlank(message)) {
             return "technician";
         }
 
@@ -479,7 +480,7 @@ public class DashboardService {
                     .mapToInt(Integer::intValue)
                     .average().orElse(0));
             String name = techRepo.findById(technicianId)
-                    .map(tech -> tech.getFullName() == null || tech.getFullName().isBlank()
+                    .map(tech -> TextUtils.isBlank(tech.getFullName())
                             ? "Technician #" + technicianId : tech.getFullName())
                     .orElse("Technician #" + technicianId);
             result.add(new DashboardTechnicianSlaPerformance(
@@ -582,7 +583,7 @@ public class DashboardService {
         Long technicianId = projection.getTechnicianId();
         String technicianName = projection.getTechnicianName();
 
-        if (technicianName == null || technicianName.isBlank()) {
+        if (TextUtils.isBlank(technicianName)) {
             technicianName = technicianId != null ? "Technician #" + technicianId : "Technician";
         }
 
@@ -677,7 +678,7 @@ public class DashboardService {
     }
 
     private String abbreviate(String value, int maxLength) {
-        if (value == null || value.isBlank()) {
+        if (TextUtils.isBlank(value)) {
             return "No description";
         }
         return value.length() <= maxLength ? value : value.substring(0, maxLength) + "...";
@@ -699,11 +700,11 @@ public class DashboardService {
                         tech -> tech.getId(),
                         tech -> {
                             String fullName = tech.getFullName();
-                            if (fullName != null && !fullName.isBlank()) {
+                            if (TextUtils.hasText(fullName)) {
                                 return fullName;
                             }
 
-                            if (tech.getEmail() != null && !tech.getEmail().isBlank()) {
+                            if (TextUtils.hasText(tech.getEmail())) {
                                 return tech.getEmail().trim();
                             }
 

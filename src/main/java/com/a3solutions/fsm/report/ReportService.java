@@ -1,5 +1,6 @@
 package com.a3solutions.fsm.report;
 
+import com.a3solutions.fsm.common.TextUtils;
 import com.a3solutions.fsm.exceptions.BadRequestException;
 import com.a3solutions.fsm.technician.TechnicianEntity;
 import com.a3solutions.fsm.technician.TechnicianRepository;
@@ -265,7 +266,7 @@ public class ReportService {
     }
 
     private String normalizePriority(String priority) {
-        if (priority == null || priority.isBlank()) {
+        if (TextUtils.isBlank(priority)) {
             return "UNSPECIFIED";
         }
         return priority.trim().toUpperCase(Locale.ROOT);
@@ -274,7 +275,7 @@ public class ReportService {
     private String label(String value) {
         String normalized = value.toLowerCase(Locale.ROOT).replace('_', ' ');
         return Arrays.stream(normalized.split(" "))
-                .filter(part -> !part.isBlank())
+                .filter(TextUtils::hasText)
                 .map(part -> Character.toUpperCase(part.charAt(0)) + part.substring(1))
                 .reduce((left, right) -> left + " " + right)
                 .orElse(value);

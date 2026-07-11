@@ -2,6 +2,7 @@ package com.a3solutions.fsm.workorder;
 
 
 import com.a3solutions.fsm.auth.UserDetailsImpl;
+import com.a3solutions.fsm.common.TextUtils;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.stereotype.Service;
@@ -70,7 +71,7 @@ public class WorkOrderEventService {
         recordEvent(
                 wo,
                 WorkOrderEventType.COMPLETED,
-                notes == null || notes.isBlank()
+                TextUtils.isBlank(notes)
                         ? "Work order completed and signed off."
                         : "Work order completed and signed off. Notes: " + notes,
                 null,
@@ -142,7 +143,7 @@ public class WorkOrderEventService {
         recordEvent(
                 wo,
                 WorkOrderEventType.REOPENED,
-                notes == null || notes.isBlank()
+                TextUtils.isBlank(notes)
                         ? "Work order was reopened by admin/dispatch."
                         : "Work order was reopened by admin/dispatch. Reason: " + notes,
                 null,
@@ -168,7 +169,7 @@ public class WorkOrderEventService {
         recordEvent(
                 wo,
                 WorkOrderEventType.ATTACHMENT_ADDED,
-                filename == null || filename.isBlank()
+                TextUtils.isBlank(filename)
                         ? "Attachment added to work order."
                         : "Attachment added: " + filename,
                 null,
